@@ -53,15 +53,15 @@ static void mdscr_write(u32 mdscr)
 {
 	unsigned long flags;
 	local_dbg_save(flags);
-	asm volatile("msr mdscr_el1, %0" :: "r" (mdscr));
+	asm volatile("msr mdscr_el1, %0" :: "r" ((u64)mdscr));
 	local_dbg_restore(flags);
 }
 
 static u32 mdscr_read(void)
 {
-	u32 mdscr;
+	u64 mdscr;
 	asm volatile("mrs %0, mdscr_el1" : "=r" (mdscr));
-	return mdscr;
+	return (u32)mdscr;
 }
 
 /*
