@@ -104,7 +104,7 @@ endif
 
 ifeq ("$(origin W)", "command line")
   export KBUILD_ENABLE_EXTRA_GCC_CHECKS := $(W)
-endif
+endif   
 
 # That's our default target when none is given on the command line
 PHONY := _all
@@ -244,6 +244,11 @@ HOSTCXX      = g++
 HOSTCFLAGS   = -Wall -Wmissing-prototypes -Wstrict-prototypes -O2 -fomit-frame-pointer
 HOSTCXXFLAGS = -O2
 
+ifeq ($(shell $(HOSTCC) -v 2>&1 | grep -c "clang version"), 1)
+HOSTCFLAGS  += -Wno-unused-value -Wno-unused-parameter \
+		-Wno-missing-field-initializers
+endif
+
 # Decide whether to build built-in, modular, or both.
 # Normally, just do built-in.
 
@@ -314,6 +319,24 @@ endif
 
 export quiet Q KBUILD_VERBOSE
 
+ifneq ($(CC),)
+ifeq ($(shell $(CC) -v 2>&1 | grep -c "clang version"), 1)
+COMPILER := clang
+else
+COMPILER := gcc
+endif
+export COMPILER
+endif
+
+ifneq ($(LD),)
+LLVM_LINK := llvm-link
+export LLVM_LINK
+endif
+
+ifneq ($(AR),)
+LLVM_AR := llvm-ar
+export LLVM_AR
+endif
 
 # Look for make include files relative to root of kernel src
 MAKEFLAGS += --include-dir=$(srctree)
@@ -325,10 +348,29 @@ include $(srctree)/scripts/Kbuild.include
 # Make variables (CC, etc...)
 
 AS		= $(CROSS_COMPILE)as
+ifeq ($(LLVM_LINK),)
 LD		= $(CROSS_COMPILE)ld
+else
+CLD		= $(CROSS_COMPILE)ld
+export CLD
+endif
+ifeq ($(COMPILER),clang)
+ifneq ($(CROSS_COMPILE),)
+CC		+= -target $(CROSS_COMPILE:%-=%)
+endif
+ifneq ($(GCC_TOOLCHAIN),)
+CC		+= -gcc-toolchain $(GCC_TOOLCHAIN)
+endif
+else
 CC		= $(CROSS_COMPILE)gcc
+endif
 CPP		= $(CC) -E
+ifeq ($(LLVM_AR),)
 AR		= $(CROSS_COMPILE)ar
+else
+CAR		= $(CROSS_COMPILE)ar
+export CAR
+endif
 NM		= $(CROSS_COMPILE)nm
 STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
@@ -372,11 +414,12 @@ KBUILD_CPPFLAGS := -D__KERNEL__
 KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes -Wno-trigraphs \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
-		   -Wno-format-security \
-		   -fno-delete-null-pointer-checks
+		   $(call cc-option,-no-integrated-as,) \
+		   -Wno-format-security
+
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
-KBUILD_AFLAGS   := -D__ASSEMBLY__
+KBUILD_AFLAGS   := -D__ASSEMBLY__ $(call cc-option,-no-integrated-as,)
 KBUILD_AFLAGS_MODULE  := -DMODULE
 KBUILD_CFLAGS_MODULE  := -DMODULE
 KBUILD_LDFLAGS_MODULE := -T $(srctree)/scripts/module-common.lds
@@ -570,8 +613,13 @@ endif # $(dot-config)
 # Defaults to vmlinux, but the arch makefile usually adds further targets
 all: vmlinux
 
+ifneq ($(COMPILER),clang)
+KBUILD_CFLAGS	+= -fno-delete-null-pointer-checks
+endif
+
 ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
-KBUILD_CFLAGS	+= -Os $(call cc-disable-warning,maybe-uninitialized,)
+KBUILD_CFLAGS	+= $(call cc-option,-Oz,-Os)
+KBUILD_CFLAGS += $(call cc-disable-warning,maybe-uninitialized,)
 else
 ifdef CONFIG_LESS_GCC_OPT
 KBUILD_CFLAGS	+= -O1
@@ -605,9 +653,27 @@ ifndef CONFIG_CC_STACKPROTECTOR
 KBUILD_CFLAGS += $(call cc-option, -fno-stack-protector)
 endif
 
+ifeq ($(COMPILER),clang)
+KBUILD_CPPFLAGS += $(call cc-option,-Qunused-arguments,)
+KBUILD_CFLAGS += $(call cc-disable-warning, unused-variable)
+KBUILD_CFLAGS += $(call cc-disable-warning, format-invalid-specifier)
+KBUILD_CFLAGS += $(call cc-disable-warning, gnu)
+KBUILD_CFLAGS += -Wno-asm-operand-widths
+KBUILD_CFLAGS += -Wno-initializer-overrides
+KBUILD_CFLAGS += -fno-builtin
+# CLANG uses a _MergedGlobals as optimization, but this breaks modpost, as the
+# source of a reference will be _MergedGlobals and not on of the whitelisted names.
+# See modpost pattern 2
+KBUILD_CFLAGS += $(call cc-option, -mno-global-merge,)
+else
+
 # This warning generated too much noise in a regular build.
 # Use make W=1 to enable this warning (see scripts/Makefile.build)
 KBUILD_CFLAGS += $(call cc-disable-warning, unused-but-set-variable)
+endif
+
+# Quiet clang warning: comparison of unsigned expression < 0 is always false
+KBUILD_CFLAGS += $(call cc-disable-warning, tautological-compare)
 
 ifdef CONFIG_FRAME_POINTER
 KBUILD_CFLAGS	+= -fno-omit-frame-pointer -fno-optimize-sibling-calls
@@ -648,7 +714,9 @@ endif
 
 # We trigger additional mismatches with less inlining
 ifdef CONFIG_DEBUG_SECTION_MISMATCH
+ifneq ($(COMPILER),clang)
 KBUILD_CFLAGS += $(call cc-option, -fno-inline-functions-called-once)
+endif
 endif
 
 # arch Makefile may override CC so keep this after arch Makefile is included
@@ -668,9 +736,13 @@ KBUILD_CFLAGS	+= $(call cc-option,-fno-strict-overflow)
 KBUILD_ARFLAGS := $(call ar-option,D)
 
 # check for 'asm goto'
+ifneq ($(COMPILER),clang)
 ifeq ($(shell $(CONFIG_SHELL) $(srctree)/scripts/gcc-goto.sh $(CC)), y)
 	KBUILD_CFLAGS += -DCC_HAVE_ASM_GOTO
 endif
+endif
+
+include $(srctree)/scripts/Makefile.extrawarn
 
 # Add user supplied CPPFLAGS, AFLAGS and CFLAGS as the last assignments
 KBUILD_CPPFLAGS += $(KCPPFLAGS)
@@ -1112,6 +1184,8 @@ help:
 	@echo  '                    (default: $$(INSTALL_MOD_PATH)/lib/firmware)'
 	@echo  '  dir/            - Build all files in dir and below'
 	@echo  '  dir/file.[oisS] - Build specified target only'
+	@echo  '  dir/file.ll     - Build the LLVM bitcode file'
+	@echo  '                    (requires compiler support for LLVM bitcode generation)'
 	@echo  '  dir/file.lst    - Build specified mixed source/assembly target only'
 	@echo  '                    (requires a recent binutils and recent build (System.map))'
 	@echo  '  dir/file.ko     - Build module including final link'
@@ -1377,6 +1451,10 @@ endif
 %.o: %.S prepare scripts FORCE
 	$(Q)$(MAKE) $(build)=$(build-dir) $(target-dir)$(notdir $@)
 %.symtypes: %.c prepare scripts FORCE
+	$(Q)$(MAKE) $(build)=$(build-dir) $(target-dir)$(notdir $@)
+%.ll: %.c prepare scripts FORCE
+	$(Q)$(MAKE) $(build)=$(build-dir) $(target-dir)$(notdir $@)
+%.ll: %.S prepare scripts FORCE
 	$(Q)$(MAKE) $(build)=$(build-dir) $(target-dir)$(notdir $@)
 
 # Modules
