@@ -1269,9 +1269,21 @@ static int gr_gk20a_setup_alpha_beta_tables(struct gk20a *g,
 	u32 reg_offset;
 	bool assign_alpha;
 
+	/*
 	u32 map_alpha[gr_pd_alpha_ratio_table__size_1_v()];
 	u32 map_beta[gr_pd_alpha_ratio_table__size_1_v()];
 	u32 map_reg_used[gr_pd_alpha_ratio_table__size_1_v()];
+	*/
+	
+	u32 size_1_v = gr_pd_alpha_ratio_table__size_1_v();
+
+	u32 *map_alpha    = kmalloc_array(size_1_v, sizeof(u32), GFP_KERNEL);
+	u32 *map_beta     = kmalloc_array(size_1_v, sizeof(u32), GFP_KERNEL);
+	u32 *map_reg_used = kmalloc_array(size_1_v, sizeof(u32), GFP_KERNEL);
+
+	if (!map_alpha || !map_beta || !map_reg_used) {
+		panic("can't allocate map_*, and don't know what to do.");
+	}
 
 	gk20a_dbg_fn("");
 
@@ -1342,6 +1354,10 @@ static int gr_gk20a_setup_alpha_beta_tables(struct gk20a *g,
 			gk20a_writel(g, gr_pd_beta_ratio_table_r(index), map_beta[index]);
 		}
 	}
+
+	kfree(map_alpha);
+	kfree(map_beta);
+	kfree(map_reg_used);
 
 	return 0;
 }
