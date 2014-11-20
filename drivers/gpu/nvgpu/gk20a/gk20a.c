@@ -1010,9 +1010,14 @@ static int gk20a_create_device(
 		return err;
 	}
 
-	dev = device_create(g->class, NULL, devno, NULL,
-		(pdev->id <= 0) ? INTERFACE_NAME : INTERFACE_NAME ".%d",
-		cdev_name, pdev->id);
+	if (pdev->id <= 0) {
+		dev = device_create(g->class, NULL, devno, NULL,
+				    INTERFACE_NAME, cdev_name);
+	} else {
+		dev = device_create(g->class, NULL, devno, NULL,
+				    INTERFACE_NAME ".%d",
+				    cdev_name, pdev->id);
+	}
 
 	if (IS_ERR(dev)) {
 		err = PTR_ERR(dev);
