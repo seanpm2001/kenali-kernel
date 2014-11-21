@@ -15,6 +15,7 @@
  */
 
 #ifndef __LINUX_MAX8831_BACKLIGHT_H
+#define __LINUX_MAX8831_BACKLIGHT_H
 #define __LINUX_PWM8831_BACKLIGHT_H
 
 #include <linux/backlight.h>
