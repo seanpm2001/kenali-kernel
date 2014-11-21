@@ -414,6 +414,11 @@ KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes \
 		   -Wno-format-extra-args \
 		   -fno-strict-aliasing -fno-common \
 		   -Werror-implicit-function-declaration \
+		   -Wno-deprecated-declarations \
+		   -Wno-unused-label \
+		   -Wno-constant-logical-operand \
+		   -Wno-header-guard \
+		   -Wno-int-to-void-pointer-cast \
 		   -Wno-format-security $(CLANG_FLAGS)
 
 KBUILD_AFLAGS_KERNEL :=

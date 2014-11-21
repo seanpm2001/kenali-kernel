@@ -254,9 +254,10 @@ static ssize_t cm3217_chan_regulator_enable(struct device *dev,
 	if (enable == (inf->als_state != CHIP_POWER_OFF))
 		return 1;
 
+	/* XXX. should be true!
 	if (!inf->vreg)
 		goto success;
-
+	*/
 	if (enable)
 		ret = cm3217_vreg_en_all(inf);
 	else
