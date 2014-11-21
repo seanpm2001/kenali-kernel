@@ -77,7 +77,7 @@ static void hdmi_state_machine_sched_work_l(int resched_time)
 {
 	cancel_delayed_work(&work_state.dwork);
 	if ((resched_time >= 0) && !work_state.shutdown)
-		queue_delayed_work(system_nrt_wq,
+		queue_delayed_work(system_wq,
 				&work_state.dwork,
 				msecs_to_jiffies(resched_time));
 }
