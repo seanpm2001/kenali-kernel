@@ -442,7 +442,7 @@ edp_i_1080p_11_6_sd_settings_init(struct tegra_dc_sd_settings *settings)
 	settings->bl_device_name = "pwm-backlight";
 }
 
-struct tegra_panel __initdata edp_i_1080p_11_6 = {
+struct tegra_panel edp_i_1080p_11_6 = {
 	.init_sd_settings = edp_i_1080p_11_6_sd_settings_init,
 	.init_dc_out = edp_i_1080p_11_6_dc_out_init,
 	.register_bl_dev = edp_i_1080p_11_6_register_bl_dev,

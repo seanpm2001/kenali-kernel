@@ -794,7 +794,7 @@ struct tegra_panel_ops dsi_s_wqxga_10_1_ops = {
 	.postsuspend = dsi_s_wqxga_10_1_postsuspend,
 };
 
-struct tegra_panel __initdata dsi_s_wqxga_10_1 = {
+struct tegra_panel dsi_s_wqxga_10_1 = {
 	.init_sd_settings = dsi_s_wqxga_10_1_sd_settings_init,
 	.init_dc_out = dsi_s_wqxga_10_1_dc_out_init,
 	.init_fb_data = dsi_s_wqxga_10_1_fb_data_init,

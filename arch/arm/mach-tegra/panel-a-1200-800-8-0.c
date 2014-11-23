@@ -543,7 +543,7 @@ static void dsi_a_1200_800_8_0_cmu_init(struct tegra_dc_platform_data *pdata)
 }
 #endif
 
-struct tegra_panel __initdata dsi_a_1200_800_8_0 = {
+struct tegra_panel dsi_a_1200_800_8_0 = {
 	.init_sd_settings = dsi_a_1200_800_8_0_sd_settings_init,
 	.init_dc_out = dsi_a_1200_800_8_0_dc_out_init,
 	.init_fb_data = dsi_a_1200_800_8_0_fb_data_init,

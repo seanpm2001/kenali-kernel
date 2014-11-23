@@ -426,7 +426,7 @@ lvds_c_1366_14_sd_settings_init(struct tegra_dc_sd_settings *settings)
 	settings->bl_device_name = "pwm-backlight";
 }
 
-struct tegra_panel __initdata lvds_c_1366_14 = {
+struct tegra_panel lvds_c_1366_14 = {
 	.init_sd_settings = lvds_c_1366_14_sd_settings_init,
 	.init_dc_out = lvds_c_1366_14_dc_out_init,
 	.init_fb_data = lvds_c_1366_14_fb_data_init,

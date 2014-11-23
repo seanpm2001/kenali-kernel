@@ -503,7 +503,7 @@ static int __init dsi_a_1080p_14_0_i2c_bridge_register(void)
 			&laguna_sn65dsi86_dsi2edp_board_info, 1);
 	return err;
 }
-struct tegra_panel __initdata dsi_a_1080p_14_0 = {
+struct tegra_panel dsi_a_1080p_14_0 = {
 	.init_sd_settings = dsi_a_1080p_14_0_sd_settings_init,
 	.init_dc_out = dsi_a_1080p_14_0_dc_out_init,
 	.init_fb_data = dsi_a_1080p_14_0_fb_data_init,
