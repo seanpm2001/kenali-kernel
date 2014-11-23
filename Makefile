@@ -246,7 +246,8 @@ HOSTCXXFLAGS = -O2
 
 ifeq ($(shell $(HOSTCC) -v 2>&1 | grep -c "clang version"), 1)
 HOSTCFLAGS  += -Wno-unused-value -Wno-unused-parameter \
-		-Wno-missing-field-initializers
+		-Wno-missing-field-initializers \
+		-Wno-format-zero-length
 endif
 
 # Decide whether to build built-in, modular, or both.
@@ -408,18 +409,10 @@ LINUXINCLUDE    := \
 
 KBUILD_CPPFLAGS := -D__KERNEL__
 
-KBUILD_CFLAGS   := -Wall -Wundef -Wstrict-prototypes \
-		   -Wno-trigraphs -Wno-sometimes-uninitialized \
-		   -Wno-unneeded-internal-declaration \
-		   -Wno-format-extra-args \
-		   -fno-strict-aliasing -fno-common \
-		   -Werror-implicit-function-declaration \
-		   -Wno-deprecated-declarations \
-		   -Wno-unused-label \
-		   -Wno-constant-logical-operand \
-		   -Wno-header-guard \
-		   -Wno-int-to-void-pointer-cast \
-		   -Wno-format-security $(CLANG_FLAGS)
+KBUILD_CFLAGS   := -Wall -Wundef \
+		   -Wstrict-prototypes \
+		   -Wno-trigraphs \
+		   $(CLANG_FLAGS)
 
 KBUILD_AFLAGS_KERNEL :=
 KBUILD_CFLAGS_KERNEL :=
@@ -667,6 +660,17 @@ KBUILD_CFLAGS += -fno-builtin
 # See modpost pattern 2
 KBUILD_CFLAGS += $(call cc-option, -mno-global-merge,)
 
+KBUILD_CFLAGS += -Wno-sometimes-uninitialized
+KBUILD_CFLAGS += -Wno-unneeded-internal-declaration
+KBUILD_CFLAGS += -Wno-format-extra-args
+KBUILD_CFLAGS += -fno-strict-aliasing -fno-common
+KBUILD_CFLAGS += -Werror-implicit-function-declaration
+KBUILD_CFLAGS += -Wno-deprecated-declarations
+KBUILD_CFLAGS += -Wno-unused-label
+KBUILD_CFLAGS += -Wno-constant-logical-operand
+KBUILD_CFLAGS += -Wno-header-guard
+KBUILD_CFLAGS += -Wno-int-to-void-pointer-cast
+KBUILD_CFLAGS += -Wno-format-security
 else
 
 KBUILD_CFLAGS += $(call cc-option,-fno-delete-null-pointer-checks,)

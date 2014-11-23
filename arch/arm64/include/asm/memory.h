@@ -47,11 +47,12 @@
  */
 #ifdef CONFIG_ARM64_64K_PAGES
 #define VA_BITS			(42)
+#define PAGE_OFFSET		(0xfffffe0000000000)
 #else
 #define VA_BITS			(39)
+#define PAGE_OFFSET		(0xffffffc000000000)
 #endif
 /* #define PAGE_OFFSET		(UL(0xffffffffffffffff) << (VA_BITS - 1)) */
-#define PAGE_OFFSET		(UL(0xffffffffffffffff) ^ ((UL(0x1) << (VA_BITS - 1)) - 1))
 #define MODULES_END		(PAGE_OFFSET)
 #define MODULES_VADDR		(MODULES_END - SZ_64M)
 #define EARLYCON_IOBASE		(MODULES_VADDR - SZ_4M)
