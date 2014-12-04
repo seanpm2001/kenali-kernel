@@ -673,6 +673,21 @@ KBUILD_CFLAGS += -Wno-int-to-void-pointer-cast
 KBUILD_CFLAGS += -Wno-format-security
 else
 
+KBUILD_CFLAGS += -Wno-asm-operand-widths
+KBUILD_CFLAGS += -Wno-initializer-overrides
+KBUILD_CFLAGS += -fno-builtin
+KBUILD_CFLAGS += -Wno-sometimes-uninitialized
+KBUILD_CFLAGS += -Wno-unneeded-internal-declaration
+KBUILD_CFLAGS += -Wno-format-extra-args
+KBUILD_CFLAGS += -fno-strict-aliasing -fno-common
+KBUILD_CFLAGS += -Werror-implicit-function-declaration
+KBUILD_CFLAGS += -Wno-deprecated-declarations
+KBUILD_CFLAGS += -Wno-unused-label
+KBUILD_CFLAGS += -Wno-constant-logical-operand
+KBUILD_CFLAGS += -Wno-header-guard
+KBUILD_CFLAGS += -Wno-int-to-void-pointer-cast
+KBUILD_CFLAGS += -Wno-format-security
+
 KBUILD_CFLAGS += $(call cc-option,-fno-delete-null-pointer-checks,)
 # This warning generated too much noise in a regular build.
 # Use make W=1 to enable this warning (see scripts/Makefile.build)
