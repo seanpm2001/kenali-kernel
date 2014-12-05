@@ -36,12 +36,28 @@ asmlinkage long sys_mmap(unsigned long addr, unsigned long len,
 	return sys_mmap_pgoff(addr, len, prot, flags, fd, off >> PAGE_SHIFT);
 }
 
+static void do_context_switch()
+{
+}
+
 asmlinkage long sys_getctxperf(int count)
 {
+	u64 s = 0, e = 0;
+	int i = 0;
+
 	if (count < 0)
 		return -EINVAL;
 
-	return 0;
+	asm volatile("mrs %0, pmccntr_el0" : "=r" (s));
+
+	/* perform context swith */
+	for (i = count; i > 0; --i) {
+		do_context_switch();
+	}
+
+	asm volatile("mrs %0, pmccntr_el0" : "=r" (e));
+
+	return (e - s);
 }
 
 /*
