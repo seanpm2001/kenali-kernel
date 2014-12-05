@@ -81,7 +81,7 @@ static inline struct thread_info *current_thread_info(void) __attribute_const__;
 static inline struct thread_info *current_thread_info(void)
 {
 	return (struct thread_info *)
-    (current_stack_pointer & ~(THREAD_SIZE - 1));
+		(current_stack_pointer & ~(THREAD_SIZE - 1));
 }
 
 #define thread_saved_pc(tsk)	\
