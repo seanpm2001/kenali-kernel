@@ -67,7 +67,7 @@ EXPORT_SYMBOL_GPL(crypto_shash_setkey);
 static inline unsigned int shash_align_buffer_size(unsigned len,
 						   unsigned long mask)
 {
-	typedef __attribute__ ((aligned)) u8 u8_aligned;
+	typedef u8 __attribute__ ((aligned)) u8_aligned;
 	return len + (mask & ~(__alignof__(u8_aligned) - 1));
 }
 
