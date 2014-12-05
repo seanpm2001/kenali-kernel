@@ -1877,14 +1877,6 @@ SYSCALL_DEFINE2(getrusage, int, who, struct rusage __user *, ru)
 	return getrusage(current, who, ru);
 }
 
-SYSCALL_DEFINE1(getctxperf, int, count)
-{
-	if (count <= 0)
-		return -EINVAL;
-
-	return 0;
-}
-
 #ifdef CONFIG_COMPAT
 COMPAT_SYSCALL_DEFINE2(getrusage, int, who, struct compat_rusage __user *, ru)
 {

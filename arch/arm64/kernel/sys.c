@@ -36,6 +36,14 @@ asmlinkage long sys_mmap(unsigned long addr, unsigned long len,
 	return sys_mmap_pgoff(addr, len, prot, flags, fd, off >> PAGE_SHIFT);
 }
 
+asmlinkage long sys_getctxperf(int count)
+{
+	if (count < 0)
+		return -EINVAL;
+
+	return 0;
+}
+
 /*
  * Wrappers to pass the pt_regs argument.
  */
