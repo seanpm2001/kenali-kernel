@@ -140,7 +140,7 @@ DEVICE_ATTR(odm_lock, 0440, tegra_fuse_show, tegra_fuse_store);
  */
 int fuse_cp_rev_check(void)
 {
-	static enum tegra_chipid chip_id;
+	static enum tegra_chipid chip_id = 0;
 	u32 rev, rev_major, rev_minor;
 
 	rev = tegra_fuse_readl(FUSE_CP_REV);
