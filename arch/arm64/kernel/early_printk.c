@@ -52,6 +52,16 @@ static void smh_printch(char ch)
 		     : : "r" (&ch) : "x0", "x1", "memory");
 }
 
+#ifdef UART_LSR
+#undef UART_LSR
+#endif
+#define UART_LSR 0x14
+
+#ifdef UART_LSR_THRE
+#undef UART_LSR_THRE
+#endif
+#define UART_LSR_THRE 0x20
+
 /*
  * 8250/16550 (8-bit aligned registers) single character TX.
  */
