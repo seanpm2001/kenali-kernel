@@ -110,6 +110,9 @@ static u64 force_gpt_sector;
 static int __init
 force_gpt_fn(char *str)
 {
+	if (*str != 0)
+		return 0;
+
 	force_gpt = 1;
 	return 1;
 }
