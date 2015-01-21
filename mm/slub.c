@@ -2661,7 +2661,7 @@ static int slub_min_objects;
  * Merge control. If this is set then no merging of slab caches will occur.
  * (Could be removed. This was introduced to pacify the merge skeptics.)
  */
-static int slub_nomerge;
+static int slub_nomerge = 1;
 
 /*
  * Calculate the order of allocation given an slab object size.
@@ -4817,6 +4817,20 @@ static int show_stat(struct kmem_cache *s, char *buf, enum stat_item si)
 	return len + sprintf(buf + len, "\n");
 }
 
+static unsigned long get_stat(struct kmem_cache *s, enum stat_item si)
+{
+	unsigned long sum  = 0;
+	int cpu;
+
+	for_each_online_cpu(cpu) {
+		unsigned x = per_cpu_ptr(s->cpu_slab, cpu)->stat[si];
+
+		sum += x;
+	}
+
+	return sum;
+}
+
 static void clear_stat(struct kmem_cache *s, enum stat_item si)
 {
 	int cpu;
@@ -5303,6 +5317,17 @@ void get_slabinfo(struct kmem_cache *s, struct slabinfo *sinfo)
 
 void slabinfo_show_stats(struct seq_file *m, struct kmem_cache *s)
 {
+#ifdef CONFIG_SLUB_STATS
+	unsigned long allocs, frees, pallocs, pfrees;
+	allocs = get_stat(s, ALLOC_FASTPATH);
+	allocs += get_stat(s, ALLOC_SLOWPATH);
+	frees = get_stat(s, FREE_FASTPATH);
+	frees += get_stat(s, FREE_SLOWPATH);
+	pallocs = get_stat(s, ALLOC_SLAB);
+	pfrees = get_stat(s, FREE_SLAB);
+
+	seq_printf(m, " : slabstats %6lu %6lu %6lu %6lu", allocs, frees, pallocs, pfrees);
+#endif
 }
 
 ssize_t slabinfo_write(struct file *file, const char __user *buffer,
