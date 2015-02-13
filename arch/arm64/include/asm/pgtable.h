@@ -92,6 +92,11 @@ extern pgprot_t pgprot_default;
 #define PAGE_KERNEL		_MOD_PROT(pgprot_default, PTE_PXN | PTE_UXN | PTE_DIRTY)
 #define PAGE_KERNEL_EXEC	_MOD_PROT(pgprot_default, PTE_UXN | PTE_DIRTY)
 
+#ifdef CONFIG_DATA_PROTECTION
+#define PAGE_KERNEL_READONLY	_MOD_PROT(pgprot_default, PTE_PXN | PTE_UXN | PTE_RDONLY | PTE_DIRTY)
+#define PAGE_KERNEL_SHADOW	_MOD_PROT(pgprot_default, PTE_PXN | PTE_UXN | PTE_NG | PTE_DIRTY)
+#endif
+
 #define __PAGE_NONE		__pgprot(((_PAGE_DEFAULT) & ~PTE_TYPE_MASK) | PTE_PROT_NONE)
 #define __PAGE_SHARED		__pgprot(_PAGE_DEFAULT | PTE_USER | PTE_NG | PTE_PXN | PTE_UXN)
 #define __PAGE_SHARED_EXEC	__pgprot(_PAGE_DEFAULT | PTE_USER | PTE_NG | PTE_PXN)

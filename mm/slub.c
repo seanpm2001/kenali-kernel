@@ -33,6 +33,7 @@
 #include <linux/stacktrace.h>
 #include <linux/prefetch.h>
 #include <linux/memcontrol.h>
+#include <linux/data_protection.h>
 
 #include <trace/events/kmem.h>
 
@@ -165,7 +166,7 @@ static inline int kmem_cache_debug(struct kmem_cache *s)
  */
 #define SLUB_NEVER_MERGE (SLAB_RED_ZONE | SLAB_POISON | SLAB_STORE_USER | \
 		SLAB_TRACE | SLAB_DESTROY_BY_RCU | SLAB_NOLEAKTRACE | \
-		SLAB_FAILSLAB)
+		SLAB_FAILSLAB | SLAB_SENSITIVE)
 
 #define SLUB_MERGE_SAME (SLAB_DEBUG_FREE | SLAB_RECLAIM_ACCOUNT | \
 		SLAB_CACHE_DMA | SLAB_NOTRACK)
@@ -1264,6 +1265,18 @@ static inline struct page *alloc_slab_page(gfp_t flags, int node,
 
 	flags |= __GFP_NOTRACK;
 
+	/*
+	 * For sensitive SLUB, we increase the order by 1
+	 * so every other page would be the shadow page for the
+	 * immediate preceeding page.
+	 */
+	if (flags & __GFP_SENSITIVE) {
+		BUG_ON(order != 0);
+
+		flags |= __GFP_COMP;
+		order = 1;
+	}
+
 	if (node == NUMA_NO_NODE)
 		return alloc_pages(flags, order);
 	else
@@ -1316,6 +1329,13 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 			kmemcheck_mark_uninitialized_pages(page, pages);
 		else
 			kmemcheck_mark_unallocated_pages(page, pages);
+	}
+
+	if (page && (s->flags & SLAB_SENSITIVE)) {
+		/*
+		 * Set up the shadow page
+		 */
+		kdp_protect_page(page);
 	}
 
 	if (flags & __GFP_WAIT)
@@ -2994,6 +3014,9 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 
 	if (s->flags & SLAB_RECLAIM_ACCOUNT)
 		s->allocflags |= __GFP_RECLAIMABLE;
+
+	if (s->flags & SLAB_SENSITIVE)
+		s->allocflags |= __GFP_SENSITIVE;
 
 	/*
 	 * Determine the number of objects per slab
