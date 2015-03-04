@@ -5,12 +5,15 @@
 #include <linux/types.h>
 
 #ifdef CONFIG_DATA_PROTECTION
+extern int kdp_enabled;
 
-void kdp_protect_page(unsigned long address);
+void kdp_init();
+void kdp_protect_page(struct page *page);
 
 #else
+#define kdp_enabled 0
 
-static inline void kdp_protect_page(unsigned long address)
+static inline void kdp_protect_page(struct page *page)
 {
 }
 
