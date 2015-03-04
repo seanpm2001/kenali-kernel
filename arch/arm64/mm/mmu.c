@@ -53,6 +53,7 @@ pgprot_t pgprot_default;
 EXPORT_SYMBOL(pgprot_default);
 
 static pmdval_t prot_sect_kernel;
+static pmdval_t prot_sect_shadow;
 
 struct cachepolicy {
 	const char	policy[16];
@@ -138,6 +139,11 @@ static void __init init_mem_pgprot(void)
 
 	default_pgprot = PTE_ATTRINDX(MT_NORMAL);
 	prot_sect_kernel = PMD_TYPE_SECT | PMD_SECT_AF | PMD_ATTRINDX(MT_NORMAL);
+	prot_sect_shadow = PMD_TYPE_SECT | PMD_SECT_AF | PMD_SECT_NG | PMD_ATTRINDX(MT_NORMAL);
+
+#ifdef CONFIG_DATA_PROTECTION
+	prot_sect_shadow |= PMD_SECT_PXN | PMD_SECT_UXN;
+#endif
 
 #ifdef CONFIG_SMP
 	/*
@@ -145,6 +151,7 @@ static void __init init_mem_pgprot(void)
 	 */
 	default_pgprot |= PTE_SHARED;
 	prot_sect_kernel |= PMD_SECT_S;
+	prot_sect_shadow |= PMD_SECT_S;
 #endif
 
 	for (i = 0; i < 16; i++) {
@@ -177,14 +184,26 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
 		unsigned long end, unsigned long pfn, unsigned int type)
 {
 	pte_t *pte;
+#ifdef CONFIG_DATA_PROCTION
+	pte_t *new_pt = NULL;
+	unsigned long start = addr;
+#endif
 
 	if (pmd_none(*pmd)) {
 		pte = early_alloc(PTRS_PER_PTE * sizeof(pte_t));
 		__pmd_populate(pmd, __pa(pte), PMD_TYPE_TABLE);
 	}
+#ifdef CONFIG_DATA_PROTECTION
+	if (pmd_bad(*pmd)) {
+		pte = new_pt = early_alloc(PTRS_PER_PTE * sizeof(pte_t));
+	} else {
+		pte = pte_offset_kernel(pmd, addr);
+	}
+#else
 	BUG_ON(pmd_bad(*pmd));
-
 	pte = pte_offset_kernel(pmd, addr);
+#endif
+
 	do {
 		switch (type) {
 		case MT_NORMAL_NC:
@@ -202,6 +221,12 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
 
 		pfn++;
 	} while (pte++, addr += PAGE_SIZE, addr != end);
+
+#ifdef CONFIG_DATA_PROTECTION
+	if (new_pt) {
+		__pmd_populate(virt_to_shadow(pmd), __pa(new_pt), PMD_TYPE_TABLE);
+	}
+#endif
 }
 
 static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
@@ -231,7 +256,12 @@ static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
 				set_pmd(pmd, __pmd(phys | PROT_SECT_DEVICE_nGnRE));
 				break;
 			case MT_MEMORY_KERNEL_EXEC:
+#ifdef CONFIG_DATA_PROTECTION
+				/* with data protection, we want page level granularity */
+				alloc_init_pte(pmd, addr, next, __phys_to_pfn(phys), type);
+#else
 				set_pmd(pmd, __pmd(phys | prot_sect_kernel));
+#endif
 				break;
 			default:
 				BUG();
@@ -370,6 +400,62 @@ void __iomem * __init early_io_map(phys_addr_t phys, unsigned long virt)
 }
 #endif
 
+#ifdef CONFIG_DATA_PROTECTION
+static void __init map_shadow(void)
+{
+	struct memblock_region *reg;
+	phys_addr_t phys, size = 0;
+	unsigned long shadow, addr, length, end, pgd_next, pmd_next;
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
+	pmd_t *next_reserved_pmd = (pmd_t*)((unsigned long)shadow_pg_dir + PAGE_SIZE);
+
+	/*
+	 * try to map all physical memory banks
+	 * FIXME: use early alloc to handle arbitrary size
+	 */
+	for_each_memblock(memory, reg) {
+		phys = reg->base;
+		size += reg->size;
+
+		if (size > SHADOW_MEM_SIZE) {
+			pr_warning("BUG: physical memory size (0x%llx) larger than reserved shadow memory size (0x%lx)\n",
+					size, SHADOW_MEM_SIZE);
+			break;
+		}
+
+		shadow = __phys_to_shadow(phys);
+		addr = shadow & PAGE_MASK;
+		length = PAGE_ALIGN(reg->size + (shadow & ~PAGE_MASK));
+
+		pgd = pgd_offset_s(addr);
+		end = addr + length;
+		do {
+			pgd_next = pgd_addr_end(addr, end);
+			pud = pud_offset(pgd, addr);
+			if (pud_none(*pud)) {
+				pmd = next_reserved_pmd;
+				pr_info("KCFI: alloc reserved pmd = 0x%016llx\n", __pa(pmd));
+				set_pud(pud, __pud(__pa(pmd) | PMD_TYPE_TABLE));
+				next_reserved_pmd += PTRS_PER_PMD;
+			}
+
+			pmd = pmd_offset(pud, addr);
+			do {
+				pmd_next = pmd_addr_end(addr, pgd_next);
+				set_pmd(pmd, __pmd(phys | prot_sect_shadow));
+				phys += pmd_next - addr;
+			} while (pmd++, addr = pmd_next, addr != pgd_next);
+
+		} while (pgd++, addr = pgd_next, addr != end);
+	}
+
+	/* enable shadow page table */
+	cpu_do_switch_mm_with_asid(virt_to_phys(shadow_pg_dir), 0);
+}
+#endif
+
 static void __init map_mem(void)
 {
 	struct memblock_region *reg;
@@ -434,6 +520,9 @@ void __init paging_init(void)
 	memblock_set_current_limit((PHYS_OFFSET & PGDIR_MASK) + PGDIR_SIZE);
 
 	init_mem_pgprot();
+#ifdef CONFIG_DATA_PROTECTION
+	map_shadow();
+#endif
 	map_mem();
 
 	/*

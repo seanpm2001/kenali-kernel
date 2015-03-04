@@ -333,9 +333,16 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern pgd_t idmap_pg_dir[PTRS_PER_PGD];
+extern pgd_t shadow_pg_dir[PTRS_PER_PGD];
 
 #define SWAPPER_DIR_SIZE	(3 * PAGE_SIZE)
 #define IDMAP_DIR_SIZE		(2 * PAGE_SIZE)
+#define SHADOW_DIR_SIZE		(3 * PAGE_SIZE)
+
+/* to find an entry in a shadow page-table-directory */
+#define pgd_offset_s(addr)	(shadow_pg_dir+pgd_index(addr))
+
+#define SHADOW_MEM_SIZE		(((SHADOW_DIR_SIZE - PAGE_SIZE) >> PAGE_SHIFT) * PGDIR_SIZE)
 
 /*
  * Encode and decode a swap entry:

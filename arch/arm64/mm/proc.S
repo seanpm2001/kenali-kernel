@@ -159,6 +159,21 @@ ENTRY(cpu_do_switch_mm)
 	ret
 ENDPROC(cpu_do_switch_mm)
 
+/*
+ *  cpu_do_switch_mm_with_asid(pgd_phys, asid)
+ *
+ *  Set the translation table base pointer to be pdg_phys.
+ *
+ *  - pgd_phys - physical address of new TTBR0
+ *  - asid - asid of current context
+ */
+ENTRY(cpu_do_switch_mm_with_asid)
+	bfi x0, x1, #48, #16		// set the ASID
+	msr ttbr0_el1, x0			// set TTBR0
+	isb
+	ret
+ENDPROC(cpu_do_switch_mm_with_asid)
+
 	.section ".text.init", #alloc, #execinstr
 
 /*

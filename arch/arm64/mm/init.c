@@ -152,6 +152,7 @@ void __init arm64_memblock_init(void)
 	 */
 	memblock_reserve(__pa(swapper_pg_dir), SWAPPER_DIR_SIZE);
 	memblock_reserve(__pa(idmap_pg_dir), IDMAP_DIR_SIZE);
+	memblock_reserve(__pa(shadow_pg_dir), SHADOW_DIR_SIZE);
 
 	/* Reserve the dtb region */
 	memblock_reserve(virt_to_phys(initial_boot_params),
