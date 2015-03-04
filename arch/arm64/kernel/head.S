@@ -47,12 +47,16 @@
 
 #define SWAPPER_DIR_SIZE	(3 * PAGE_SIZE)
 #define IDMAP_DIR_SIZE		(2 * PAGE_SIZE)
+#define SHADOW_DIR_SIZE		(3 * PAGE_SIZE)
 
 	.globl	swapper_pg_dir
 	.equ	swapper_pg_dir, KERNEL_RAM_VADDR - SWAPPER_DIR_SIZE
 
 	.globl	idmap_pg_dir
 	.equ	idmap_pg_dir, swapper_pg_dir - IDMAP_DIR_SIZE
+
+	.globl	shadow_pg_dir
+	.equ	shadow_pg_dir, idmap_pg_dir - SHADOW_DIR_SIZE
 
 	.macro	pgtbl, ttb0, ttb1, phys
 	add	\ttb1, \phys, #TEXT_OFFSET - SWAPPER_DIR_SIZE
@@ -446,7 +450,7 @@ __create_page_tables:
 	add	x0, x26, #PAGE_SIZE		// section table address
 	mov	x5, #PAGE_OFFSET
 	create_pgd_entry x26, x0, x5, x3, x6
-	ldr	x6, =KERNEL_END - 1
+	ldr	x6, =PGDIR_SIZE -1 // map the first 1G space, instead of KERNEL_END
 	mov	x3, x24				// phys offset
 	create_block_map x0, x7, x3, x5, x6
 
