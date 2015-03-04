@@ -6,16 +6,11 @@
 
 #ifdef CONFIG_DATA_PROTECTION
 
-void kdp_protect_page(struct page *p);
-void kdp_unprotect_page(struct page *p);
+void kdp_protect_page(unsigned long address);
 
 #else
 
-static inline void kdp_protect_page(struct page *p)
-{
-}
-
-static inline void kdp_unprotect_page(struct page *p)
+static inline void kdp_protect_page(unsigned long address)
 {
 }
 

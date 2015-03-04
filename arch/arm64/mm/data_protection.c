@@ -51,19 +51,14 @@ static pte_t *lookup_address(unsigned long address, unsigned int *level)
 	return pte;
 }
 
-void kdp_protect_page(struct page *p)
+void kdp_protect_page(unsigned long address)
 {
-	int order = compound_order(page);
-	unsigned long address, writable_address;
 	pte_t *pte;
 	unsigned int level;
 
-	BUG_ON(order != 1);
-
-	address = (unsigned long) page_address(&p[1]);
 	pte = lookup_address(address, &level);
 	BUG_ON(!pte);
-	BUG_ON(level != PAGE_LEVEL_4K);
+	BUG_ON(level != PG_LEVEL_4K);
 
 	pte_modify(pte, PAGE_KERNEL_READONLY);
 }

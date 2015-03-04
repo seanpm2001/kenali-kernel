@@ -1335,7 +1335,8 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 		/*
 		 * Set up the shadow page
 		 */
-		kdp_protect_page(page);
+		BUG_ON(compound_order(page) != 1);
+		kdp_protect_page((unsigned long)page_address(&page[1]));
 	}
 
 	if (flags & __GFP_WAIT)

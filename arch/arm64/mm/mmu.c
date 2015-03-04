@@ -184,7 +184,7 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
 		unsigned long end, unsigned long pfn, unsigned int type)
 {
 	pte_t *pte;
-#ifdef CONFIG_DATA_PROCTION
+#ifdef CONFIG_DATA_PROTECTION
 	pte_t *new_pt = NULL;
 	unsigned long start = addr;
 #endif
