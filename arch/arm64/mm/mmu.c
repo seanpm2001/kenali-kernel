@@ -148,6 +148,10 @@ static void __init init_mem_pgprot(void)
 	prot_sect_kernel |= PMD_SECT_S;
 #endif
 
+#ifdef CONFIG_DATA_PROTECTION
+	prot_sect_kernel |= PMD_SECT_PXN | PMD_SECT_UXN;
+#endif
+
 	for (i = 0; i < 16; i++) {
 		unsigned long v = pgprot_val(protection_map[i]);
 		protection_map[i] = __pgprot(v | default_pgprot);
@@ -209,6 +213,11 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
 		case MT_MEMORY_KERNEL_EXEC:
 			set_pte(pte, pfn_pte(pfn, PAGE_KERNEL_EXEC));
 			break;
+#ifdef CONFIG_DATA_PROTECTION
+		case MT_MEMORY_KERNEL:
+			set_pte(pte, pfn_pte(pfn, PAGE_KERNEL));
+			break;
+#endif
 		default:
 			BUG();
 		}
@@ -257,6 +266,11 @@ static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
 				set_pmd(pmd, __pmd(phys | prot_sect_kernel));
 #endif
 				break;
+#ifdef CONFIG_DATA_PROTECTION
+			case MT_MEMORY_KERNEL:
+				set_pmd(pmd, __pmd(phys | prot_sect_kernel));
+				break;
+#endif
 			default:
 				BUG();
 			}

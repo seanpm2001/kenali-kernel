@@ -22,6 +22,7 @@ struct map_desc {
 };
 
 #define MT_MEMORY_KERNEL_EXEC 5
+#define MT_MEMORY_KERNEL 6
 
 #ifdef CONFIG_MMU
 extern void iotable_init(struct map_desc *, int);

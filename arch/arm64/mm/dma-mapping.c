@@ -495,7 +495,11 @@ void __init dma_contiguous_remap(void)
 		if (start >= end)
 			continue;
 
+#ifdef CONFIG_DATA_PROTECTION
+		map.type = MT_MEMORY_KERNEL;
+#else
 		map.type = MT_MEMORY_KERNEL_EXEC;
+#endif
 
 		/*
 		 * Clear previous low-memory mapping
