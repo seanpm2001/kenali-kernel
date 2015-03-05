@@ -76,6 +76,7 @@
 #include <linux/elevator.h>
 #include <linux/random.h>
 #include <linux/sched_clock.h>
+#include <linux/data_protection.h>
 
 #include <linux/pasr.h>
 #include <asm/io.h>
@@ -825,6 +826,7 @@ static int __ref kernel_init(void *unused)
 	kernel_init_freeable();
 	/* need to finish all async __init code before freeing the memory */
 	async_synchronize_full();
+	kdp_enable();
 	free_initmem();
 	mark_rodata_ro();
 	system_state = SYSTEM_RUNNING;

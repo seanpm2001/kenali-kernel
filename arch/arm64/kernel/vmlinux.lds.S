@@ -56,7 +56,7 @@ SECTIONS
 	}
 
 	RO_DATA(PAGE_SIZE)
-
+	EXCEPTION_TABLE(8)
 	NOTES
 	_etext = .;			/* End of text and rodata section */
 

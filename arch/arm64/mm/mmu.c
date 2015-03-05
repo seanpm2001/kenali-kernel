@@ -481,9 +481,6 @@ void __init paging_init(void)
 
 
 	dma_contiguous_remap();
-#ifdef CONFIG_DATA_PROTECTION
-	kdp_init();
-#endif
 	/*
 	 * TTBR0 is only used for the identity mapping at this stage. Make it
 	 * point to zero page to avoid speculatively fetching new entries.

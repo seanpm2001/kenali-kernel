@@ -94,6 +94,7 @@ extern pgprot_t pgprot_default;
 
 #ifdef CONFIG_DATA_PROTECTION
 #define PAGE_KERNEL_READONLY	_MOD_PROT(pgprot_default, PTE_PXN | PTE_UXN | PTE_RDONLY | PTE_DIRTY)
+#define PAGE_KERNEL_READONLY_EXEC	_MOD_PROT(pgprot_default, PTE_UXN | PTE_RDONLY | PTE_DIRTY)
 #define PAGE_KERNEL_SHADOW	_MOD_PROT(pgprot_default, PTE_PXN | PTE_UXN | PTE_NG | PTE_DIRTY)
 #endif
 
