@@ -165,6 +165,11 @@ extern unsigned long zero_page_mask;
 #define pte_valid_user(pte) \
 	((pte_val(pte) & (PTE_VALID | PTE_USER)) == (PTE_VALID | PTE_USER))
 
+#ifdef CONFIG_DATA_PROTECTION
+extern int kdp_enabled;
+#endif
+extern pgd_t shadow_pg_dir[PTRS_PER_PGD];
+
 static inline pte_t pte_wrprotect(pte_t pte)
 {
 	pte_val(pte) &= ~PTE_WRITE;
@@ -209,6 +214,11 @@ static inline pte_t pte_mkspecial(pte_t pte)
 
 static inline void set_pte(pte_t *ptep, pte_t pte)
 {
+#ifdef CONFIG_DATA_PROTECTION
+	if (likely(kdp_enabled))
+		cpu_write_shadow(ptep, pte, shadow_pg_dir);
+	else
+#endif
 	*ptep = pte;
 }
 
@@ -334,7 +344,6 @@ static inline pte_t pte_modify(pte_t pte, pgprot_t newprot)
 
 extern pgd_t swapper_pg_dir[PTRS_PER_PGD];
 extern pgd_t idmap_pg_dir[PTRS_PER_PGD];
-extern pgd_t shadow_pg_dir[PTRS_PER_PGD];
 
 #define SWAPPER_DIR_SIZE	(3 * PAGE_SIZE)
 #define IDMAP_DIR_SIZE		(2 * PAGE_SIZE)

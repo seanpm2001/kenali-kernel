@@ -226,6 +226,9 @@ static void __init setup_processor(void)
 	else
 		BUG_ON(1);
 	cpu_last_asid = 1 << max_asid_bits;
+#ifdef CONFIG_DATA_PROTECTION
+	++cpu_last_asid;
+#endif
 	/*
 	 * ID_AA64ISAR0_EL1 contains 4-bit wide signed feature blocks.
 	 * The blocks we test below represent incremental functionality

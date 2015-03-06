@@ -28,7 +28,7 @@ int __init kdp_init(void)
 	pgd_t *pgd;
 	pud_t *pud;
 	pmd_t *pmd;
-	pmd_t *next_reserved_pmd = (pmd_t*)((unsigned long)shadow_pg_dir + PAGE_SIZE);
+	pmd_t *next_reserved_pmd = (pmd_t *)(shadow_pg_dir + PTRS_PER_PGD);
 	pmdval_t prot_sect_shadow;
 		
 	prot_sect_shadow = PMD_TYPE_SECT | PMD_SECT_AF | PMD_SECT_NG | PMD_ATTRINDX(MT_NORMAL);
@@ -36,6 +36,8 @@ int __init kdp_init(void)
 #ifdef CONFIG_SMP
 	prot_sect_shadow |= PMD_SECT_S;
 #endif
+
+	memset(shadow_pg_dir, 0, sizeof(shadow_pg_dir));
 
 	/*
 	 * try to map all physical memory banks
@@ -57,6 +59,8 @@ int __init kdp_init(void)
 
 		pgd = pgd_offset_s(addr);
 		end = addr + length;
+
+		pr_info("KCFI: maping shadow address 0x%016lx - 0x%016lx\n", addr, end);
 		do {
 			pgd_next = pgd_addr_end(addr, end);
 			pud = pud_offset(pgd, addr);
@@ -74,7 +78,7 @@ int __init kdp_init(void)
 				phys += pmd_next - addr;
 			} while (pmd++, addr = pmd_next, addr != pgd_next);
 
-		} while (pgd++, addr = pgd_next, addr != end);
+		} while (pgd++, addr != end);
 	}
 
 	return 0;
@@ -144,14 +148,27 @@ static void protect_kernel(void)
 
 void kdp_enable(void)
 {
-#if 0
-	unsigned long old_pg = cpu_get_pgd();
+	pgd_t* old_pg = cpu_get_pgd();
+	pr_info("KCFI: old pgd = 0x%p\n", old_pg);
 
-	/* enable shadow page table */
-	cpu_do_switch_mm_with_asid(virt_to_phys(shadow_pg_dir), 0);
-#endif
-	
 	protect_kernel();
+
+#if 0
+	/*
+	 * enable shadow page table, this is necessary for
+	 * making swapper_pg_dir as read-only
+	 */
+	cpu_do_switch_mm_with_asid(virt_to_phys(shadow_pg_dir), 0);
+
+	/* protect all init page tables */
+	protect_pgtable(idmap_pg_dir);
+	protect_pgtable(shadow_pg_dir);
+	protect_pgtable(swapper_pg_dir);
+
+	/* restore old pgd */
+	cpu_do_switch_mm_with_asid(old_pg, 0);
+	flush_tlb_all();
+#endif
 
 	/* set data protection as enabled */
 	kdp_enabled = 1;

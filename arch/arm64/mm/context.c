@@ -105,6 +105,9 @@ static void reset_context(void *info)
 
 static inline void set_mm_context(struct mm_struct *mm, unsigned int asid)
 {
+#ifdef CONFIG_DATA_PROTECTION
+	BUG_ON((asid & 0xffff) == 0);
+#endif
 	mm->context.id = asid;
 	cpumask_copy(mm_cpumask(mm), cpumask_of(smp_processor_id()));
 }
@@ -144,6 +147,10 @@ void __new_context(struct mm_struct *mm)
 		cpu_last_asid += (1 << max_asid_bits) - (1 << bits);
 		if (cpu_last_asid == 0)
 			cpu_last_asid = 1 << max_asid_bits;
+#ifdef CONFIG_DATA_PROTECTION
+		/* reserve asid 0 for shadow address space */
+		++cpu_last_asid;
+#endif
 		asid = cpu_last_asid + smp_processor_id();
 		flush_context();
 #ifdef CONFIG_SMP

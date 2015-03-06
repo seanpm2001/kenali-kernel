@@ -174,6 +174,27 @@ ENTRY(cpu_do_switch_mm_with_asid)
 	ret
 ENDPROC(cpu_do_switch_mm_with_asid)
 
+/*
+ * cpu_do_write_shadow(addr, value, pg_dir)
+ *
+ * write 1 word size value to shadow address
+ *
+ * - addr - shadow_address?
+ * - value - word size (64bit)
+ * - pg_dir - shadow_pg_dir
+ *
+ */
+ENTRY(cpu_do_write_shadow)
+	mrs x3, ttbr0_el1			// save current TTBR0
+	msr ttbr0_el1, x2			// swap to shadow_pg_dir
+	isb
+	str x1, [x0]				// write to shadow addr
+	dsb ishst
+	msr ttbr0_el1, x3			// restore TTBR0
+	isb
+	ret
+ENDPROC(cpu_do_write_shadow)
+
 	.section ".text.init", #alloc, #execinstr
 
 /*

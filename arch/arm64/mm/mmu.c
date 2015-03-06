@@ -508,7 +508,11 @@ void __init paging_init(void)
  */
 void setup_mm_for_reboot(void)
 {
+#ifdef CONFIG_DATA_PROTECTION
+	cpu_switch_mm_with_asid(idmap_pg_dir, init_mm.context.id);
+#else
 	cpu_switch_mm(idmap_pg_dir, &init_mm);
+#endif
 	flush_tlb_all();
 }
 
