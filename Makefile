@@ -617,7 +617,7 @@ else
 ifdef CONFIG_LESS_GCC_OPT
 KBUILD_CFLAGS	+= -O1
 else
-KBUILD_CFLAGS	+= -O2
+KBUILD_CFLAGS	+= -O2 -fsanitize=kcfi
 endif
 endif
 
