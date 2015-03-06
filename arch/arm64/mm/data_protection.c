@@ -218,16 +218,17 @@ void kdp_protect_page(struct page *page)
 {
 	int order;
 	unsigned long address;
-	pte_t *ppte, pte;
+	pte_t *ptep, pte;
 	unsigned int level;
 
 	order = compound_order(page);
 	BUG_ON(order != 1);
 
 	address = (unsigned long)page_address(&page[1]);
-	ppte = lookup_address(address, &level);
-	BUG_ON(!ppte);
+	ptep = lookup_address(address, &level);
+	BUG_ON(!ptep);
 	BUG_ON(level != PG_LEVEL_4K);
 
-	pte = pte_modify(*ppte, PAGE_KERNEL_READONLY);
+	pte = pte_modify(*ptep, PAGE_KERNEL_READONLY);
+	set_pte(ptep, pte);
 }
