@@ -214,9 +214,10 @@ static inline pte_t pte_mkspecial(pte_t pte)
 
 static inline void set_pte(pte_t *ptep, pte_t pte)
 {
-#ifdef CONFIG_DATA_PROTECTION
-	if (likely(kdp_enabled))
+#if 0//def CONFIG_DATA_PROTECTION
+	if (likely(kdp_enabled)) {
 		cpu_write_shadow(ptep, pte, shadow_pg_dir);
+	}
 	else
 #endif
 	*ptep = pte;
