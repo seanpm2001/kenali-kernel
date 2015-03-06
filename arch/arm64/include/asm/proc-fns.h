@@ -65,17 +65,22 @@ extern void cpu_do_write_shadow(unsigned long addr, unsigned long value, unsigne
 #else
 #define cpu_write_shadow(addr,value,spgd)		\
 do {							\
-	unsigned long sa = __virt_to_shadow(addr);	\
+	unsigned long *sa = virt_to_shadow(addr);	\
 	unsigned long pgd = virt_to_phys(spgd);		\
+	unsigned long flags;				\
 	asm volatile(					\
+	"	mrs	x2, daif\n"			\
+	"	msr	daifset, #2\n"			\
 	"	mrs	x3, ttbr0_el1\n"		\
 	"	msr	ttbr0_el1, %2\n"		\
 	"	isb	\n"				\
-	"	stlr	%1, [%0]\n"			\
+	"	str	%1, %0\n"			\
+	"	dsb	ishst\n"			\
 	"	msr	ttbr0_el1, x3\n"		\
-	"	isb"					\
-	: : "r" (sa), "r" (value), "r" (pgd)		\
-	: "x3", "memory");				\
+	"	isb	\n"				\
+	"	msr	daif, x2\n"			\
+	: : "Q" (*sa), "r" (value), "r" (pgd)		 \
+	: "x2", "x3", "memory");			\
 } while (0)
 #endif
 
