@@ -64,19 +64,19 @@ extern void cpu_do_write_shadow(unsigned long addr, unsigned long value, unsigne
 #define cpu_write_shadow(addr,value,spgd) cpu_do_write_shadow(__virt_to_shadow(addr), value, virt_to_phys(spgd))
 #else
 #define cpu_write_shadow(addr,value,spgd)		\
-({							\
+do {							\
 	unsigned long sa = __virt_to_shadow(addr);	\
 	unsigned long pgd = virt_to_phys(spgd);		\
-	asm("mrs	x3, ttbr0_el1\n"		\
-		"msr	ttbr0_el1, %2\n"		\
-		"isb	\n"				\
-		"str	%1, [%0]\n"			\
-		"dsb	ishst\n"			\
-		"msr	ttbr0_el1, x3\n"		\
-		"isb"					\
-		: : "r"(sa), "r"(value), "r"(pgd)	\
-		: "%x3");				\
-})
+	asm volatile(					\
+	"	mrs	x3, ttbr0_el1\n"		\
+	"	msr	ttbr0_el1, %2\n"		\
+	"	isb	\n"				\
+	"	stlr	%1, [%0]\n"			\
+	"	msr	ttbr0_el1, x3\n"		\
+	"	isb"					\
+	: : "r" (sa), "r" (value), "r" (pgd)		\
+	: "x3", "memory");				\
+} while (0)
 #endif
 
 #endif /* __ASSEMBLY__ */
