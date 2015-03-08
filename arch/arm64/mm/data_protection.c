@@ -37,7 +37,7 @@ int __init kdp_init(void)
 	prot_sect_shadow |= PMD_SECT_S;
 #endif
 
-	memset(shadow_pg_dir, 0, sizeof(shadow_pg_dir));
+	memset(shadow_pg_dir, 0, SHADOW_DIR_SIZE);
 
 	/*
 	 * try to map all physical memory banks
@@ -146,34 +146,6 @@ static void protect_kernel(void)
 	} while (pgd++, addr = pgd_next, addr != end);				
 }
 
-void kdp_enable(void)
-{
-	pgd_t* old_pg = cpu_get_pgd();
-	pr_info("KCFI: old pgd = 0x%p\n", old_pg);
-
-	protect_kernel();
-
-#if 0
-	/*
-	 * enable shadow page table, this is necessary for
-	 * making swapper_pg_dir as read-only
-	 */
-	cpu_do_switch_mm_with_asid(virt_to_phys(shadow_pg_dir), 0);
-
-	/* protect all init page tables */
-	protect_pgtable(idmap_pg_dir);
-	protect_pgtable(shadow_pg_dir);
-	protect_pgtable(swapper_pg_dir);
-
-	/* restore old pgd */
-	cpu_do_switch_mm_with_asid(old_pg, 0);
-	flush_tlb_all();
-#endif
-
-	/* set data protection as enabled */
-	kdp_enabled = 1;
-}
-
 static pte_t *lookup_address(unsigned long address, unsigned int *level)
 {
 	pgd_t *pgd = NULL;
@@ -214,21 +186,99 @@ static pte_t *lookup_address(unsigned long address, unsigned int *level)
 	return pte;
 }
 
-void kdp_protect_page(struct page *page)
+static void kdp_protect_one_page(void* address)
 {
-	int order;
-	unsigned long address;
 	pte_t *ptep, pte;
 	unsigned int level;
 
-	order = compound_order(page);
-	BUG_ON(order != 1);
+	//pr_info("KCFI: protect page %p\n", address);
 
-	address = (unsigned long)page_address(&page[1]);
-	ptep = lookup_address(address, &level);
+	ptep = lookup_address((unsigned long)address, &level);
 	BUG_ON(!ptep);
 	BUG_ON(level != PG_LEVEL_4K);
 
 	pte = pte_modify(*ptep, PAGE_KERNEL_READONLY);
-	set_pte(ptep, pte);
+	if (likely(kdp_enabled))
+		set_pte(ptep, pte);
+	else
+		set_pte(virt_to_shadow(ptep), pte);
 }
+
+static void protect_pgtable(pgd_t *pg_dir)
+{
+	/* 
+	 * traverse the whole page table and 
+	 * make every page translation struct as read-only
+	 * under direct mapping
+	 */
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *pt;
+	phys_addr_t phys;
+	int i, j;
+
+	/* first, protect the page directory page */
+	kdp_protect_one_page(pg_dir);
+
+	for (i = 0; i < PTRS_PER_PGD; i++) {
+		/* collapse pgd and pud for now */
+		pud = (pud_t *)&pg_dir[i];
+
+		if (pud_none(*pud))
+			continue;
+
+		/* second, protect valid pmd pages */
+		pmd = pud_page_vaddr(*pud);
+		kdp_protect_one_page(pmd);
+		
+		for (j = 0; j < PTRS_PER_PMD; j++) {
+			/* skip sections as well */
+			if (pmd_none(pmd[j]) || pmd_bad(pmd[j]))
+				continue;
+
+			/* finally, protect valid pte pages */
+			pt = pmd_page_vaddr(pmd[j]);
+			kdp_protect_one_page(pt);
+		}
+	}
+}
+
+void kdp_enable(void)
+{
+	pgd_t* old_pg = cpu_get_pgd();
+	pr_info("KCFI: old pgd = 0x%p, zero page = 0x%lx\n",
+		old_pg, empty_zero_page);
+
+	protect_kernel();
+
+	/*
+	 * enable shadow page table, this is necessary for
+	 * making swapper_pg_dir as read-only
+	 */
+	cpu_switch_mm_with_asid(shadow_pg_dir, 0);
+
+	/* protect all init page tables */
+	protect_pgtable(idmap_pg_dir);
+	protect_pgtable(shadow_pg_dir);
+	protect_pgtable(swapper_pg_dir);
+
+	/* restore old pgd */
+	cpu_switch_mm_with_asid(old_pg, 0);
+	flush_tlb_all();
+
+	/* set data protection as enabled */
+	kdp_enabled = 1;
+}
+
+void kdp_protect_page(struct page *page)
+{
+	int order;
+	void *address;
+
+	order = compound_order(page);
+	BUG_ON(order != 1);
+
+	address = page_address(&page[1]);
+	kdp_protect_one_page(address);
+}
+

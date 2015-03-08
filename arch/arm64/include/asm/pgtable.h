@@ -269,8 +269,16 @@ extern pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 
 static inline void set_pmd(pmd_t *pmdp, pmd_t pmd)
 {
-	*pmdp = pmd;
-	dsb();
+#ifdef CONFIG_DATA_PROTECTION
+	if (likely(kdp_enabled)) {
+		cpu_write_shadow(pmdp, pmd, shadow_pg_dir);
+	}
+	else
+#endif
+	{
+		*pmdp = pmd;
+		dsb();
+	}
 }
 
 static inline void pmd_clear(pmd_t *pmdp)
@@ -299,8 +307,16 @@ static inline pte_t *pmd_page_vaddr(pmd_t pmd)
 
 static inline void set_pud(pud_t *pudp, pud_t pud)
 {
-	*pudp = pud;
-	dsb();
+#ifdef CONFIG_DATA_PROTECTION
+	if (likely(kdp_enabled)) {
+		cpu_write_shadow(pudp, pud, shadow_pg_dir);
+	}
+	else
+#endif
+	{
+		*pudp = pud;
+		dsb();
+	}
 }
 
 static inline void pud_clear(pud_t *pudp)
@@ -312,6 +328,8 @@ static inline pmd_t *pud_page_vaddr(pud_t pud)
 {
 	return __va(pud_val(pud) & PHYS_MASK & (s32)PAGE_MASK);
 }
+
+#define pud_page(pud)		pfn_to_page(__phys_to_pfn(pud_val(pud) & PHYS_MASK))
 
 #endif	/* CONFIG_ARM64_64K_PAGES */
 
