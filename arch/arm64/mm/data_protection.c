@@ -156,31 +156,27 @@ static pte_t *lookup_address(unsigned long address, unsigned int *level)
 	*level = PG_LEVEL_NONE;
 
 	pgd = pgd_offset_k(address);
-	if (pgd_none(*pgd))
-		return NULL;
-
 	pud = pud_offset(pgd, address);
-	if (pud_none(*pud) || !pud_present(*pud))
+	if (unlikely(pud_none(*pud)))
 		return NULL;
 
 	*level = PG_LEVEL_1G;
 	/* This should never happen */
-	if (pud_bad(*pud))
+	if (unlikely(pud_bad(*pud)))
 		return (pte_t *)pud;
 
 	pmd = pmd_offset(pud, address);
-	if (pmd_none(*pmd) || !pmd_present(*pmd))
+	if (unlikely(pmd_none(*pmd)))
 		return NULL;
 
 	*level = PG_LEVEL_2M;
 	/* This should never happen */
-	if (pmd_bad(*pmd))
+	if (unlikely(pmd_bad(*pmd)))
 		return (pte_t *)pmd;
 
 	*level = PG_LEVEL_4K;
-
 	pte = pte_offset_kernel(pmd, address);
-	if (!pte_present(*pte))
+	if (unlikely(!pte_present(*pte)))
 		return NULL;
 
 	return pte;
@@ -189,10 +185,10 @@ static pte_t *lookup_address(unsigned long address, unsigned int *level)
 static void inline flush_kern_tlb_one_page(void* address)
 {
 	asm volatile(
-	"	dsb	sy\n"
+	"	dsb	ishst\n"
 	"	lsr	%0, %0, #12\n"
 	"	tlbi	vaale1is, %0\n"
-	"	dsb	sy\n"
+	"	dsb	ish\n"
 	"	isb"
 	: : "r" (address) : "memory");
 }
@@ -201,6 +197,9 @@ void kdp_protect_one_page(void* address)
 {
 	pte_t *ptep, pte;
 	unsigned int level;
+
+	if (unlikely(address == NULL))
+		return;
 
 	//if (kdp_enabled)
 	//	pr_info("KCFI: protect page %p\n", address);
@@ -222,6 +221,9 @@ void kdp_unprotect_one_page(void* address)
 {
 	pte_t *ptep, pte;
 	unsigned int level;
+
+	if (unlikely(address == NULL))
+		return;
 
 	//if (kdp_enabled)
 	//	pr_info("KCFI: unprotect page %p\n", address);

@@ -32,16 +32,23 @@
 
 pgd_t *pgd_alloc(struct mm_struct *mm)
 {
-	if (PGD_SIZE == PAGE_SIZE)
-		return (pgd_t *)get_zeroed_page(GFP_KERNEL);
-	else
+	if (PGD_SIZE == PAGE_SIZE) {
+		unsigned long page = get_zeroed_page(GFP_KERNEL);
+		if (likely(kdp_enabled))
+			kdp_protect_one_page((void *)page);
+		return (pgd_t *)page;
+	} else {
 		return kzalloc(PGD_SIZE, GFP_KERNEL);
+	}
 }
 
 void pgd_free(struct mm_struct *mm, pgd_t *pgd)
 {
-	if (PGD_SIZE == PAGE_SIZE)
+	if (PGD_SIZE == PAGE_SIZE) {
+		if (likely(kdp_enabled))
+			kdp_unprotect_one_page(pgd);
 		free_page((unsigned long)pgd);
-	else
+	} else {
 		kfree(pgd);
+	}
 }
