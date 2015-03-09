@@ -26,16 +26,29 @@
 
 #define check_pgt_cache()		do { } while (0)
 
+#ifdef CONFIG_DATA_PROTECTION
+extern void kdp_protect_one_page(void* address);
+extern void kdp_unprotect_one_page(void* address);
+#else
+#define kdp_protect_one_page(addr)	do { } while (0)
+#define kdp_unprotect_one_page(addr)	do { } while (0)
+#endif
+
 #ifndef CONFIG_ARM64_64K_PAGES
 
 static inline pmd_t *pmd_alloc_one(struct mm_struct *mm, unsigned long addr)
 {
-	return (pmd_t *)get_zeroed_page(GFP_KERNEL | __GFP_REPEAT);
+	unsigned long page = get_zeroed_page(GFP_KERNEL | __GFP_REPEAT);
+	if (likely(kdp_enabled))
+		kdp_protect_one_page((void *)page);
+	return (pmd_t *)page;
 }
 
 static inline void pmd_free(struct mm_struct *mm, pmd_t *pmd)
 {
 	BUG_ON((unsigned long)pmd & (PAGE_SIZE-1));
+	if (likely(kdp_enabled))
+		kdp_unprotect_one_page(pmd);
 	free_page((unsigned long)pmd);
 }
 
@@ -54,7 +67,10 @@ extern void pgd_free(struct mm_struct *mm, pgd_t *pgd);
 static inline pte_t *
 pte_alloc_one_kernel(struct mm_struct *mm, unsigned long addr)
 {
-	return (pte_t *)__get_free_page(PGALLOC_GFP);
+	unsigned long page = __get_free_page(PGALLOC_GFP);
+	if (likely(kdp_enabled))
+		kdp_protect_one_page((void *)page);
+	return (pte_t *)page;
 }
 
 static inline pgtable_t
@@ -69,6 +85,8 @@ pte_alloc_one(struct mm_struct *mm, unsigned long addr)
 		__free_page(pte);
 		return NULL;
 	}
+	if (likely(kdp_enabled))
+		kdp_protect_one_page(page_address(pte));
 	return pte;
 }
 
@@ -77,13 +95,18 @@ pte_alloc_one(struct mm_struct *mm, unsigned long addr)
  */
 static inline void pte_free_kernel(struct mm_struct *mm, pte_t *pte)
 {
-	if (pte)
+	if (pte) {
+		if (likely(kdp_enabled))
+			kdp_unprotect_one_page(pte);
 		free_page((unsigned long)pte);
+	}
 }
 
 static inline void pte_free(struct mm_struct *mm, pgtable_t pte)
 {
 	pgtable_page_dtor(pte);
+	if (likely(kdp_enabled))
+		kdp_unprotect_one_page(page_address(pte));
 	__free_page(pte);
 }
 

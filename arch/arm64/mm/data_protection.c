@@ -186,22 +186,53 @@ static pte_t *lookup_address(unsigned long address, unsigned int *level)
 	return pte;
 }
 
-static void kdp_protect_one_page(void* address)
+static void inline flush_kern_tlb_one_page(void* address)
+{
+	asm volatile(
+	"	dsb	sy\n"
+	"	lsr	%0, %0, #12\n"
+	"	tlbi	vaale1is, %0\n"
+	"	dsb	sy\n"
+	"	isb"
+	: : "r" (address) : "memory");
+}
+
+void kdp_protect_one_page(void* address)
 {
 	pte_t *ptep, pte;
 	unsigned int level;
 
-	//pr_info("KCFI: protect page %p\n", address);
+	//if (kdp_enabled)
+	//	pr_info("KCFI: protect page %p\n", address);
 
 	ptep = lookup_address((unsigned long)address, &level);
 	BUG_ON(!ptep);
 	BUG_ON(level != PG_LEVEL_4K);
 
 	pte = pte_modify(*ptep, PAGE_KERNEL_READONLY);
-	if (likely(kdp_enabled))
+	if (likely(kdp_enabled)) {
 		set_pte(ptep, pte);
-	else
+		flush_kern_tlb_one_page(address);
+	} else {
 		set_pte(virt_to_shadow(ptep), pte);
+	}
+}
+
+void kdp_unprotect_one_page(void* address)
+{
+	pte_t *ptep, pte;
+	unsigned int level;
+
+	//if (kdp_enabled)
+	//	pr_info("KCFI: unprotect page %p\n", address);
+
+	ptep = lookup_address((unsigned long)address, &level);
+	BUG_ON(!ptep);
+	BUG_ON(level != PG_LEVEL_4K);
+
+	pte = pte_modify(*ptep, PAGE_KERNEL);
+	set_pte(ptep, pte);
+	flush_kern_tlb_one_page(address);
 }
 
 static void protect_pgtable(pgd_t *pg_dir)
@@ -274,6 +305,9 @@ void kdp_protect_page(struct page *page)
 {
 	int order;
 	void *address;
+
+	if (page == NULL)
+		return;
 
 	order = compound_order(page);
 	BUG_ON(order != 1);

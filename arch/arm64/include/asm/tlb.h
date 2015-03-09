@@ -167,10 +167,18 @@ static inline void tlb_remove_page(struct mmu_gather *tlb, struct page *page)
 		tlb_flush_mmu(tlb);
 }
 
+#ifdef CONFIG_DATA_PROTECTION
+extern void kdp_unprotect_one_page(void* address);
+#else
+#define kdp_unprotect_one_page(addr)	do { } while(0)
+#endif
+
 static inline void __pte_free_tlb(struct mmu_gather *tlb, pgtable_t pte,
 	unsigned long addr)
 {
 	pgtable_page_dtor(pte);
+	if (likely(kdp_enabled && atomic_read(&(pte)->_count) == 1))
+		kdp_unprotect_one_page(page_address(pte));
 	tlb_add_flush(tlb, addr);
 	tlb_remove_page(tlb, pte);
 }
@@ -179,8 +187,11 @@ static inline void __pte_free_tlb(struct mmu_gather *tlb, pgtable_t pte,
 static inline void __pmd_free_tlb(struct mmu_gather *tlb, pmd_t *pmdp,
 				  unsigned long addr)
 {
+	struct page *page = virt_to_page(pmdp);
+	if (likely(kdp_enabled && atomic_read(&(page)->_count) == 1))
+		kdp_unprotect_one_page(pmdp);
 	tlb_add_flush(tlb, addr);
-	tlb_remove_page(tlb, virt_to_page(pmdp));
+	tlb_remove_page(tlb, page);
 }
 #endif
 
