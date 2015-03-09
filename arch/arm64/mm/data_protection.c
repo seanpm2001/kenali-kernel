@@ -184,13 +184,13 @@ static pte_t *lookup_address(unsigned long address, unsigned int *level)
 
 static void inline flush_kern_tlb_one_page(void* address)
 {
-	asm volatile(
+	asm (
 	"	dsb	ishst\n"
 	"	lsr	%0, %0, #12\n"
 	"	tlbi	vaale1is, %0\n"
 	"	dsb	ish\n"
 	"	isb"
-	: : "r" (address) : "memory");
+	: : "r" (address));
 }
 
 void kdp_protect_one_page(void* address)
