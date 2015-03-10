@@ -617,7 +617,7 @@ else
 ifdef CONFIG_LESS_GCC_OPT
 KBUILD_CFLAGS	+= -O1
 else
-KBUILD_CFLAGS	+= -O2 -fsanitize=kcfi
+KBUILD_CFLAGS	+= -O2
 endif
 endif
 
@@ -671,6 +671,11 @@ KBUILD_CFLAGS += -Wno-constant-logical-operand
 KBUILD_CFLAGS += -Wno-header-guard
 KBUILD_CFLAGS += -Wno-int-to-void-pointer-cast
 KBUILD_CFLAGS += -Wno-format-security
+
+ifeq ($(LLVM_TEST),1)
+KBUILD_CFLAGS += -fsanitize=kcfi
+endif
+
 else
 
 KBUILD_CFLAGS += -Wno-asm-operand-widths
