@@ -674,6 +674,10 @@ KBUILD_CFLAGS += -Wno-format-security
 
 ifeq ($(LLVM_TEST),1)
 KBUILD_CFLAGS += -fsanitize=kcfi
+else
+ifeq ($(LLVM_TEST),2)
+KBUILD_CFLAGS += -fsanitize=zzt1 -mllvm -zzt1_sslist=$(ZZT1_SS) -mllvm -zzt1_sflist=$(ZZT1_SF)
+endif
 endif
 
 else
