@@ -33,6 +33,11 @@ modules.builtin
 *.patch
 *.gcno
 
+# LLVM related
+*.bc
+*.ll
+!kernel/timeconst.bc
+
 #
 # Top-level generic files
 #

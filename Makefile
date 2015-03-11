@@ -349,12 +349,26 @@ include $(srctree)/scripts/Kbuild.include
 # Make variables (CC, etc...)
 
 AS		= $(CROSS_COMPILE)as
+
+ifeq ($(LLVM_LINK),)
 LD		= $(CROSS_COMPILE)ld
+else
+CLD		= $(CROSS_COMPILE)ld
+export CLD
+endif
+
 CC		= $(CROSS_COMPILE)gcc
 GCC		= $(CROSS_COMPILE)gcc
 export GCC
 CPP		= $(CC) -E
+
+ifeq ($(LLVM_AR),)
 AR		= $(CROSS_COMPILE)ar
+else
+CAR		= $(CROSS_COMPILE)ar
+export CAR
+endif
+
 NM		= $(CROSS_COMPILE)nm
 STRIP		= $(CROSS_COMPILE)strip
 OBJCOPY		= $(CROSS_COMPILE)objcopy
