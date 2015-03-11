@@ -1428,6 +1428,10 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 	__ClearPageSlabPfmemalloc(page);
 	__ClearPageSlab(page);
 
+	if (s->flags & SLAB_SENSITIVE) {
+		kdp_unprotect_page(page);
+	}
+
 	memcg_release_pages(s, order);
 	page_mapcount_reset(page);
 	if (current->reclaim_state)

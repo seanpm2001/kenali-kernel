@@ -318,3 +318,17 @@ void kdp_protect_page(struct page *page)
 	kdp_protect_one_page(address);
 }
 
+void kdp_unprotect_page(struct page *page)
+{
+	int order;
+	void *address;
+
+	if (page == NULL)
+		return;
+
+	order = compound_order(page);
+	BUG_ON(order != 1);
+
+	address = page_address(&page[1]);
+	kdp_unprotect_one_page(address);
+}

@@ -9,12 +9,14 @@ extern int kdp_enabled;
 
 void kdp_enable();
 void kdp_protect_page(struct page *page);
+void kdp_unprotect_page(struct page *page);
 
 #else
 #define kdp_enabled 0
 
 static inline void kdp_enable() { }
 static inline void kdp_protect_page(struct page *page) { }
+static inline void kdp_unprotect_page(struct page *page) { }
 
 #endif /* CONFIG_DATA_PROTECTION */
 
