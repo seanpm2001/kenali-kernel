@@ -329,13 +329,13 @@ endif
 export COMPILER
 endif
 
-ifneq ($(LD),)
-LLVM_LINK := llvm-link
+ifeq ($(LLVM_LINK),)
+LLVM_LINK := $(LLVM_LINK)
 export LLVM_LINK
 endif
 
-ifneq ($(AR),)
-LLVM_AR := llvm-ar
+ifneq ($(LLVM_AR),)
+LLVM_AR := $(LLVM_AR)
 export LLVM_AR
 endif
 
