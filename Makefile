@@ -334,9 +334,9 @@ LLVM_LINK := $(LLVM_LINK)
 export LLVM_LINK
 endif
 
-ifneq ($(LLVM_AR),)
-LLVM_AR := $(LLVM_AR)
-export LLVM_AR
+ifneq ($(LLVM_ARCHIVE),)
+LLVM_ARCHIVE := $(LLVM_ARCHIVE)
+export LLVM_ARCHIVE
 endif
 
 # Look for make include files relative to root of kernel src
@@ -353,6 +353,7 @@ AS		= $(CROSS_COMPILE)as
 ifeq ($(LLVM_LINK),)
 LD		= $(CROSS_COMPILE)ld
 else
+LD		= $(LLVM_LINK)
 CLD		= $(CROSS_COMPILE)ld
 export CLD
 endif
@@ -362,9 +363,10 @@ GCC		= $(CROSS_COMPILE)gcc
 export GCC
 CPP		= $(CC) -E
 
-ifeq ($(LLVM_AR),)
+ifeq ($(LLVM_ARCHIVE),)
 AR		= $(CROSS_COMPILE)ar
 else
+AR		= $(LLVM_ARCHIVE)
 CAR		= $(CROSS_COMPILE)ar
 export CAR
 endif
