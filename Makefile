@@ -633,6 +633,7 @@ else
 ifdef CONFIG_LESS_GCC_OPT
 KBUILD_CFLAGS	+= -O1
 else
+#KBUILD_CFLAGS	+= -O0 -g -fno-inline -fno-inline-functions -mllvm -disable-llvm-optzns
 KBUILD_CFLAGS	+= -O2
 endif
 endif
