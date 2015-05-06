@@ -3385,6 +3385,18 @@ void kfree(const void *x)
 }
 EXPORT_SYMBOL(kfree);
 
+void *__kcfi_malloc(size_t size)
+{
+	return kmalloc(size, GFP_ATOMIC | __GFP_ZERO);
+}
+EXPORT_SYMBOL(__kcfi_malloc);
+
+void __kcfi_free(const void *p)
+{
+	kfree(p);
+}
+EXPORT_SYMBOL(__kcfi_free);
+
 /*
  * kmem_cache_shrink removes empty slabs from the partial lists and sorts
  * the remaining slabs by the number of items in use. The slabs with the

@@ -329,7 +329,7 @@ endif
 export COMPILER
 endif
 
-ifeq ($(LLVM_LINK),)
+ifneq ($(LLVM_LINK),)
 LLVM_LINK := $(LLVM_LINK)
 export LLVM_LINK
 endif
@@ -690,7 +690,12 @@ KBUILD_CFLAGS += -Wno-int-to-void-pointer-cast
 KBUILD_CFLAGS += -Wno-format-security
 
 ifeq ($(LLVM_TEST),1)
-KBUILD_CFLAGS += -fsanitize=kcfi
+#KBUILD_CFLAGS += -fsanitize=kcfi
+
+ifneq ($(SS_SIG),)
+KBUILD_CFLAGS += -fsanitize=kcfi-alloca -fsanitize-blacklist=$(SS_SIG)
+endif
+
 else
 ifeq ($(LLVM_TEST),2)
 KBUILD_CFLAGS += -fsanitize=zzt1 -mllvm -zzt1_sslist=$(ZZT1_SS) -mllvm -zzt1_sflist=$(ZZT1_SF)

@@ -139,6 +139,8 @@ void * __must_check krealloc(const void *, size_t, gfp_t);
 void kfree(const void *);
 void kzfree(const void *);
 size_t ksize(const void *);
+void * __kcfi_malloc(size_t);
+void __kcfi_free(const void *);
 
 /*
  * Some archs want to perform DMA into kmalloc caches and need a guaranteed
