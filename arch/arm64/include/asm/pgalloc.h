@@ -27,9 +27,11 @@
 #define check_pgt_cache()		do { } while (0)
 
 #ifdef CONFIG_DATA_PROTECTION
+extern int kdp_enabled;
 extern void kdp_protect_one_page(void* address);
 extern void kdp_unprotect_one_page(void* address);
 #else
+#define kdp_enabled 0
 #define kdp_protect_one_page(addr)	do { } while (0)
 #define kdp_unprotect_one_page(addr)	do { } while (0)
 #endif
