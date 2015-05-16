@@ -315,6 +315,7 @@ void kdp_protect_page(struct page *page)
 	BUG_ON(order != 1);
 
 	address = page_address(&page[1]);
+	pr_info("KCFI: protectioning page 0x%p\n", address);
 	kdp_protect_one_page(address);
 }
 
@@ -331,4 +332,84 @@ void kdp_unprotect_page(struct page *page)
 
 	address = page_address(&page[1]);
 	kdp_unprotect_one_page(address);
+}
+
+void atomic64_write_shadow(unsigned long *addr, unsigned long value)
+{
+	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+	unsigned long pgd = virt_to_phys(shadow_pg_dir);
+	unsigned long flags;
+	asm volatile(
+	"	mrs	x2, daif\n"
+	"	msr	daifset, #2\n"
+	"	mrs	x3, ttbr0_el1\n"
+	"	msr	ttbr0_el1, %2\n"
+	"	isb	\n"
+	"	str	%1, [%0]\n"
+	"	dsb	ishst\n"
+	"	msr	ttbr0_el1, x3\n"
+	"	isb	\n"
+	"	msr	daif, x2\n"
+	: : "r" (sa), "r" (value), "r" (pgd)
+	: "x2", "x3", "memory");
+}
+
+void atomic32_write_shadow(unsigned long *addr, unsigned value)
+{
+	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+	unsigned long pgd = virt_to_phys(shadow_pg_dir);
+	unsigned long flags;
+	asm volatile(
+	"	mrs	x2, daif\n"
+	"	msr	daifset, #2\n"
+	"	mrs	x3, ttbr0_el1\n"
+	"	msr	ttbr0_el1, %2\n"
+	"	isb	\n"
+	"	str	%w1, [%0]\n"
+	"	dsb	ishst\n"
+	"	msr	ttbr0_el1, x3\n"
+	"	isb	\n"
+	"	msr	daif, x2\n"
+	: : "r" (sa), "r" (value), "r" (pgd)
+	: "x2", "x3", "memory");
+}
+
+void atomic16_write_shadow(unsigned long *addr, unsigned short value)
+{
+	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+	unsigned long pgd = virt_to_phys(shadow_pg_dir);
+	unsigned long flags;
+	asm volatile(
+	"	mrs	x2, daif\n"
+	"	msr	daifset, #2\n"
+	"	mrs	x3, ttbr0_el1\n"
+	"	msr	ttbr0_el1, %2\n"
+	"	isb	\n"
+	"	strh	%w1, [%0]\n"
+	"	dsb	ishst\n"
+	"	msr	ttbr0_el1, x3\n"
+	"	isb	\n"
+	"	msr	daif, x2\n"
+	: : "r" (sa), "r" (value), "r" (pgd)
+	: "x2", "x3", "memory");
+}
+
+void atomic8_write_shadow(unsigned long *addr, unsigned char value)
+{
+	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+	unsigned long pgd = virt_to_phys(shadow_pg_dir);
+	unsigned long flags;
+	asm volatile(
+	"	mrs	x2, daif\n"
+	"	msr	daifset, #2\n"
+	"	mrs	x3, ttbr0_el1\n"
+	"	msr	ttbr0_el1, %2\n"
+	"	isb	\n"
+	"	strb	%w1, [%0]\n"
+	"	dsb	ishst\n"
+	"	msr	ttbr0_el1, x3\n"
+	"	isb	\n"
+	"	msr	daif, x2\n"
+	: : "r" (sa), "r" (value), "r" (pgd)
+	: "x2", "x3", "memory");
 }
