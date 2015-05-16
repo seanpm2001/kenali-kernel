@@ -1271,10 +1271,11 @@ static inline struct page *alloc_slab_page(gfp_t flags, int node,
 	 * immediate preceeding page.
 	 */
 	if (flags & __GFP_SENSITIVE) {
-		BUG_ON(order != 0);
+		//BUG_ON(order != 0);
+		printk(KERN_INFO "KCFI: allocate sensitive slub\n");
 
 		flags |= __GFP_COMP;
-		order = 1;
+		order += 1;
 	}
 
 	if (node == NUMA_NO_NODE)

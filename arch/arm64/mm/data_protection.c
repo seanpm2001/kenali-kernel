@@ -307,35 +307,46 @@ void kdp_protect_page(struct page *page)
 {
 	int order;
 	void *address;
+	int i, start, end;
 
-	if (page == NULL)
+	if (unlikely(page == NULL || !kdp_enabled))
 		return;
 
 	order = compound_order(page);
-	BUG_ON(order != 1);
+	start = 1 << (order - 1);
+	end = 1 << order;
 
-	address = page_address(&page[1]);
-	pr_info("KCFI: protectioning page 0x%p\n", address);
-	kdp_protect_one_page(address);
+	for (i = start; i < end; ++i) {
+		address = page_address(&page[i]);
+		pr_info("KCFI: protectioning page 0x%p\n", address);
+		kdp_protect_one_page(address);
+	}
 }
 
 void kdp_unprotect_page(struct page *page)
 {
 	int order;
 	void *address;
+	int i, start, end;
 
-	if (page == NULL)
+	if (unlikely(page == NULL || !kdp_enabled))
 		return;
 
 	order = compound_order(page);
-	BUG_ON(order != 1);
+	start = 1 << (order - 1);
+	end = 1 << order;
 
-	address = page_address(&page[1]);
-	kdp_unprotect_one_page(address);
+	for (i = start; i < end; ++i) {
+		address = page_address(&page[i]);
+		kdp_unprotect_one_page(address);
+	}
 }
 
 void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 {
+	if (unlikely(addr < PAGE_OFFSET || !kdp_enabled))
+		return;
+
 	unsigned long sa = (unsigned long)virt_to_shadow(addr);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
@@ -356,6 +367,9 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 
 void atomic32_write_shadow(unsigned long *addr, unsigned value)
 {
+	if (unlikely(addr < PAGE_OFFSET || !kdp_enabled))
+		return;
+
 	unsigned long sa = (unsigned long)virt_to_shadow(addr);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
@@ -376,6 +390,9 @@ void atomic32_write_shadow(unsigned long *addr, unsigned value)
 
 void atomic16_write_shadow(unsigned long *addr, unsigned short value)
 {
+	if (unlikely(addr < PAGE_OFFSET || !kdp_enabled))
+		return;
+
 	unsigned long sa = (unsigned long)virt_to_shadow(addr);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
@@ -396,6 +413,9 @@ void atomic16_write_shadow(unsigned long *addr, unsigned short value)
 
 void atomic8_write_shadow(unsigned long *addr, unsigned char value)
 {
+	if (unlikely(addr < PAGE_OFFSET || !kdp_enabled))
+		return;
+
 	unsigned long sa = (unsigned long)virt_to_shadow(addr);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;

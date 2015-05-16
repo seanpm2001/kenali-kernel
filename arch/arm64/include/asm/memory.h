@@ -53,7 +53,7 @@
 #define PAGE_OFFSET		UL(0xffffffc000000000)
 #endif
 /* #define PAGE_OFFSET		(UL(0xffffffffffffffff) << (VA_BITS - 1)) */
-#define SHADOW_OFFSET	UL(0x200000000)
+#define KDP_SHADOW_OFFSET	UL(0x200000000)
 #define MODULES_END		(PAGE_OFFSET)
 #define MODULES_VADDR		(MODULES_END - SZ_64M)
 #define EARLYCON_IOBASE		(MODULES_VADDR - SZ_4M)
@@ -82,8 +82,8 @@
  */
 #define __virt_to_phys(x)	(((phys_addr_t)(x) - PAGE_OFFSET + PHYS_OFFSET))
 #define __phys_to_virt(x)	((unsigned long)((x) - PHYS_OFFSET + PAGE_OFFSET))
-#define __virt_to_shadow(x)	(((unsigned long)(x) - PAGE_OFFSET + SHADOW_OFFSET))
-#define __phys_to_shadow(x) ((unsigned long)((x) - PHYS_OFFSET + SHADOW_OFFSET))
+#define __virt_to_shadow(x)	(((unsigned long)(x) - PAGE_OFFSET + KDP_SHADOW_OFFSET))
+#define __phys_to_shadow(x) ((unsigned long)((x) - PHYS_OFFSET + KDP_SHADOW_OFFSET))
 
 /*
  * Convert a physical address to a Page Frame Number and back
