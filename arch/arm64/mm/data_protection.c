@@ -342,6 +342,41 @@ void kdp_unprotect_page(struct page *page)
 	}
 }
 
+void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
+{
+	if (unlikely(((unsigned long)dest < PAGE_OFFSET) ||
+	             ((unsigned long)src < PAGE_OFFSET) ||
+		     (!kdp_enabled))) {
+		//memcpy(dest, src, count);
+		return;
+	}
+
+	void *sdest = virt_to_shadow(dest);
+	void *ssrc = virt_to_shadow(src);
+	unsigned long pgd = virt_to_phys(shadow_pg_dir);
+	unsigned long old_pgd, flags;
+
+	asm volatile(
+	"	mrs	%1, daif\n"
+	"	msr	daifset, #2\n"
+	"	mrs	%0, ttbr0_el1\n"
+	"	msr	ttbr0_el1, %2\n"
+	"	isb	\n"
+	: "=r" (old_pgd), "=r" (flags)
+	: "r" (pgd)
+	:);
+
+	memcpy(sdest, ssrc, count);
+
+	asm volatile(
+	"	dsb	ishst\n"
+	"	msr	ttbr0_el1, %0\n"
+	"	isb	\n"
+	"	msr	daif, %1\n"
+	: : "r" (old_pgd), "r" (flags)
+	:);
+}
+
 void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 {
 	if (unlikely(addr < PAGE_OFFSET || !kdp_enabled))
