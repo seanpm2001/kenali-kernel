@@ -690,11 +690,11 @@ KBUILD_CFLAGS += -Wno-int-to-void-pointer-cast
 KBUILD_CFLAGS += -Wno-format-security
 
 ifeq ($(LLVM_TEST),1)
-#KBUILD_CFLAGS += -fsanitize=kcfi
+KBUILD_CFLAGS += -fsanitize=kdfi -mllvm -kdfi-sig=$(SS_SIG)
 
-ifneq ($(SS_SIG),)
-KBUILD_CFLAGS += -fsanitize=kcfi-alloca -fsanitize-blacklist=$(SS_SIG)
-endif
+#ifneq ($(SS_SIG),)
+#KBUILD_CFLAGS += -fsanitize=kcfi-alloca -fsanitize-blacklist=$(SS_SIG)
+#endif
 
 else
 ifeq ($(LLVM_TEST),2)
