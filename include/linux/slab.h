@@ -234,6 +234,9 @@ extern struct kmem_cache *kmalloc_caches[KMALLOC_SHIFT_HIGH + 1];
 #ifdef CONFIG_ZONE_DMA
 extern struct kmem_cache *kmalloc_dma_caches[KMALLOC_SHIFT_HIGH + 1];
 #endif
+#ifdef CONFIG_DATA_PROTECTION
+extern struct kmem_cache *kmalloc_caches_s[KMALLOC_SHIFT_HIGH + 1];
+#endif
 
 /*
  * Figure out which kmalloc slab an allocation of a certain size

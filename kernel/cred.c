@@ -240,7 +240,7 @@ struct cred *prepare_creds(void)
 
 	validate_process_creds();
 
-	new = kmem_cache_alloc(cred_jar, GFP_KERNEL | __GFP_SENSITIVE);
+	new = kmem_cache_alloc(cred_jar, GFP_KERNEL);
 	if (!new)
 		return NULL;
 
@@ -562,7 +562,7 @@ void __init cred_init(void)
 {
 	/* allocate a slab in which we can store credentials */
 	cred_jar = kmem_cache_create("cred_jar", sizeof(struct cred),
-				     0, SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_SENSITIVE, NULL);
+				     0, SLAB_HWCACHE_ALIGN|SLAB_PANIC, NULL);
 }
 
 /**
@@ -588,7 +588,7 @@ struct cred *prepare_kernel_cred(struct task_struct *daemon)
 	const struct cred *old;
 	struct cred *new;
 
-	new = kmem_cache_alloc(cred_jar, GFP_KERNEL | __GFP_SENSITIVE);
+	new = kmem_cache_alloc(cred_jar, GFP_KERNEL);
 	if (!new)
 		return NULL;
 

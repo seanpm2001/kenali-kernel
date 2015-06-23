@@ -188,7 +188,7 @@ kmem_cache_create_memcg(struct mem_cgroup *memcg, const char *name, size_t size,
 	if (s)
 		goto out_locked;
 
-	s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL);
+	s = kmem_cache_zalloc(kmem_cache, GFP_KERNEL | GFP_SENSITIVE);
 	if (s) {
 		s->object_size = s->size = size;
 		s->align = calculate_alignment(flags, align, size);
@@ -327,6 +327,11 @@ struct kmem_cache *kmalloc_dma_caches[KMALLOC_SHIFT_HIGH + 1];
 EXPORT_SYMBOL(kmalloc_dma_caches);
 #endif
 
+#ifdef CONFIG_DATA_PROTECTION
+struct kmem_cache *kmalloc_caches_s[KMALLOC_SHIFT_HIGH + 1];
+EXPORT_SYMBOL(kmalloc_caches_s);
+#endif
+
 /*
  * Conversion table for small slabs sizes / 8 to the index in the
  * kmalloc array. This is necessary for slabs < 192 since we have non power
@@ -391,6 +396,12 @@ struct kmem_cache *kmalloc_slab(size_t size, gfp_t flags)
 		return kmalloc_dma_caches[index];
 
 #endif
+
+#ifdef CONFIG_DATA_PROTECTION
+	if (unlikely((flags & GFP_SENSITIVE)))
+		return kmalloc_caches_s[index];
+#endif
+
 	return kmalloc_caches[index];
 }
 
@@ -489,6 +500,22 @@ void __init create_kmalloc_caches(unsigned long flags)
 			BUG_ON(!n);
 			kmalloc_dma_caches[i] = create_kmalloc_cache(n,
 				size, SLAB_CACHE_DMA | flags);
+		}
+	}
+#endif
+
+#ifdef CONFIG_DATA_PROTECTION
+	for (i = 0; i <= KMALLOC_SHIFT_HIGH; i++) {
+		struct kmem_cache *s = kmalloc_caches[i];
+
+		if (s) {
+			int size = kmalloc_size(i);
+			char *n = kasprintf(GFP_NOWAIT,
+				 "kdfi-kmalloc-%d", size);
+
+			BUG_ON(!n);
+			kmalloc_caches_s[i] = create_kmalloc_cache(n,
+				size, SLAB_SENSITIVE | flags);
 		}
 	}
 #endif

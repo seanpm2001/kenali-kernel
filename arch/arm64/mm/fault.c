@@ -35,6 +35,7 @@
 #include <asm/system_misc.h>
 #include <asm/pgtable.h>
 #include <asm/tlbflush.h>
+#include <asm/proc-fns.h>
 
 #define CREATE_TRACE_POINTS
 #include <trace/events/pagefault.h>
@@ -48,7 +49,7 @@ void show_pte(struct mm_struct *mm, unsigned long addr)
 {
 	pgd_t *pgd;
 
-	if (!mm)
+	if (!mm || addr > PAGE_OFFSET)
 		mm = &init_mm;
 
 	pr_alert("pgd = %p\n", mm->pgd);
@@ -99,6 +100,7 @@ static void __do_kernel_fault(struct mm_struct *mm, unsigned long addr,
 	pr_alert("Unable to handle kernel %s at virtual address %08lx\n",
 		 (addr < PAGE_SIZE) ? "NULL pointer dereference" :
 		 "paging request", addr);
+	pr_alert("Fault name = %s\n", fault_name(esr));
 
 	show_pte(mm, addr);
 	die("Oops", regs, esr);

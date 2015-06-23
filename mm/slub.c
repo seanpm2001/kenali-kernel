@@ -1270,9 +1270,9 @@ static inline struct page *alloc_slab_page(gfp_t flags, int node,
 	 * so every other page would be the shadow page for the
 	 * immediate preceeding page.
 	 */
-	if (flags & __GFP_SENSITIVE) {
+	if (unlikely((flags & GFP_SENSITIVE))) {
 		//BUG_ON(order != 0);
-		printk(KERN_INFO "KCFI: allocate sensitive slub\n");
+		printk(KERN_INFO "KDFI: allocate sensitive slub\n");
 
 		flags |= __GFP_COMP;
 		order += 1;
@@ -1332,7 +1332,7 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 			kmemcheck_mark_unallocated_pages(page, pages);
 	}
 
-	if (page && (s->flags & SLAB_SENSITIVE)) {
+	if (page && (flags & GFP_SENSITIVE)) {
 		/*
 		 * Set up the shadow page
 		 */
@@ -2843,7 +2843,7 @@ static void early_kmem_cache_node_alloc(int node)
 
 	BUG_ON(kmem_cache_node->size < sizeof(struct kmem_cache_node));
 
-	page = new_slab(kmem_cache_node, GFP_NOWAIT, node);
+	page = new_slab(kmem_cache_node, GFP_NOWAIT | GFP_SENSITIVE, node);
 
 	BUG_ON(!page);
 	if (page_to_nid(page) != node) {
@@ -3021,7 +3021,7 @@ static int calculate_sizes(struct kmem_cache *s, int forced_order)
 		s->allocflags |= __GFP_RECLAIMABLE;
 
 	if (s->flags & SLAB_SENSITIVE)
-		s->allocflags |= __GFP_SENSITIVE;
+		s->allocflags |= GFP_SENSITIVE;
 
 	/*
 	 * Determine the number of objects per slab
@@ -3601,6 +3601,9 @@ static struct kmem_cache * __init bootstrap(struct kmem_cache *static_cache)
 	struct kmem_cache *s = kmem_cache_zalloc(kmem_cache, GFP_NOWAIT);
 
 	memcpy(s, static_cache, kmem_cache->object_size);
+#ifdef CONFIG_DATA_PROTECTION
+	atomic_memcpy_shadow((unsigned char*)s + 4096, static_cache, kmem_cache->object_size);
+#endif
 
 	/*
 	 * This runs very early, and only the boot processor is supposed to be
@@ -3648,7 +3651,7 @@ void __init kmem_cache_init(void)
 	create_boot_cache(kmem_cache, "kmem_cache",
 			offsetof(struct kmem_cache, node) +
 				nr_node_ids * sizeof(struct kmem_cache_node *),
-		       SLAB_HWCACHE_ALIGN);
+		       SLAB_HWCACHE_ALIGN | SLAB_SENSITIVE);
 
 	kmem_cache = bootstrap(&boot_kmem_cache);
 
@@ -5169,6 +5172,8 @@ static char *create_unique_id(struct kmem_cache *s)
 	 */
 	if (s->flags & SLAB_CACHE_DMA)
 		*p++ = 'd';
+	if (s->flags & SLAB_SENSITIVE)
+		*p++ = 's';
 	if (s->flags & SLAB_RECLAIM_ACCOUNT)
 		*p++ = 'a';
 	if (s->flags & SLAB_DEBUG_FREE)

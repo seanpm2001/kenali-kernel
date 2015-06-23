@@ -8,7 +8,7 @@
 #include <asm/proc-fns.h>
 #include <asm/tlbflush.h>
 
-int kdp_enabled;
+int kdp_enabled __section(.rodata);
 
 static pmdval_t prot_sect_shadow;
 
@@ -30,13 +30,13 @@ int __init kdp_init(void)
 	pmd_t *pmd;
 	pmd_t *next_reserved_pmd = (pmd_t *)(shadow_pg_dir + PTRS_PER_PGD);
 	pmdval_t prot_sect_shadow;
-		
+
 	prot_sect_shadow = PMD_TYPE_SECT | PMD_SECT_AF | PMD_SECT_NG | PMD_ATTRINDX(MT_NORMAL);
 	prot_sect_shadow |= PMD_SECT_PXN | PMD_SECT_UXN;
 #ifdef CONFIG_SMP
 	prot_sect_shadow |= PMD_SECT_S;
 #endif
-
+		
 	memset(shadow_pg_dir, 0, SHADOW_DIR_SIZE);
 
 	/*
@@ -60,13 +60,13 @@ int __init kdp_init(void)
 		pgd = pgd_offset_s(addr);
 		end = addr + length;
 
-		pr_info("KCFI: maping shadow address 0x%016lx - 0x%016lx\n", addr, end);
+		pr_info("KDFI: maping shadow address 0x%016lx - 0x%016lx\n", addr, end);
 		do {
 			pgd_next = pgd_addr_end(addr, end);
 			pud = pud_offset(pgd, addr);
 			if (pud_none(*pud)) {
 				pmd = next_reserved_pmd;
-				pr_info("KCFI: alloc reserved pmd = 0x%016llx\n", __pa(pmd));
+				pr_info("KDFI: alloc reserved pmd = 0x%016llx\n", __pa(pmd));
 				set_pud(pud, __pud(__pa(pmd) | PMD_TYPE_TABLE));
 				next_reserved_pmd += PTRS_PER_PMD;
 			}
@@ -103,12 +103,13 @@ static void protect_kernel(void)
 
 	/* then, find rodata section range */
 	ro_start = (unsigned long)__start_rodata;
-	ro_end = (unsigned long)__init_begin;
+	ro_end = (unsigned long)_etext;
 
-	pr_info("KCFI: mark kernel code section (0x%16lx - 0x%016lx) as RX\n",
+	pr_info("KDFI: mark kernel code section (0x%16lx - 0x%016lx) as RX\n",
 			code_start, code_end);
-	pr_info("KCFI: mark kernel rodata section (0x%16lx - 0x%016lx) as RO\n",
+	pr_info("KDFI: mark kernel rodata section (0x%16lx - 0x%016lx) as RO\n",
 			ro_start, ro_end);
+	pr_info("KDFI: kernel end = 0x%p\n", _end);
 
 	addr = VMALLOC_START;
 	end = UL(0xffffffffffffffff) & PAGE_MASK;
@@ -193,6 +194,22 @@ static void inline flush_kern_tlb_one_page(void* address)
 	: : "r" (address));
 }
 
+#define KDP_INIT_PAGE_LIST	64
+static void* kdp_init_page_list[KDP_INIT_PAGE_LIST];
+static unsigned kdp_init_page_list_head = 0;
+
+void kdp_protect_init_page(void* address) {
+
+	pr_info("KDFI: enqueue page %p\n", address);
+
+	if (unlikely(kdp_init_page_list_head >= KDP_INIT_PAGE_LIST)) {
+		pr_err("KDFI: list size too small\n");
+		return;
+	}
+
+	kdp_init_page_list[kdp_init_page_list_head++] = address;
+}
+
 void kdp_protect_one_page(void* address)
 {
 	pte_t *ptep, pte;
@@ -200,9 +217,6 @@ void kdp_protect_one_page(void* address)
 
 	if (unlikely(address == NULL))
 		return;
-
-	//if (kdp_enabled)
-	//	pr_info("KCFI: protect page %p\n", address);
 
 	ptep = lookup_address((unsigned long)address, &level);
 	BUG_ON(!ptep);
@@ -225,8 +239,10 @@ void kdp_unprotect_one_page(void* address)
 	if (unlikely(address == NULL))
 		return;
 
-	//if (kdp_enabled)
-	//	pr_info("KCFI: unprotect page %p\n", address);
+	if (unlikely(!kdp_enabled)) {
+		pr_err("KDFI not enabled\n");
+		return;
+	}
 
 	ptep = lookup_address((unsigned long)address, &level);
 	BUG_ON(!ptep);
@@ -279,7 +295,7 @@ static void protect_pgtable(pgd_t *pg_dir)
 void kdp_enable(void)
 {
 	pgd_t* old_pg = cpu_get_pgd();
-	pr_info("KCFI: old pgd = 0x%p, zero page = 0x%lx\n",
+	pr_info("KDFI: old pgd = 0x%p, zero page = 0x%lx\n",
 		old_pg, empty_zero_page);
 
 	protect_kernel();
@@ -295,12 +311,18 @@ void kdp_enable(void)
 	protect_pgtable(shadow_pg_dir);
 	protect_pgtable(swapper_pg_dir);
 
+	pr_info("KDFI: init pages = %d\n", kdp_init_page_list_head);
+	/* protect enqueued pages */
+	for (unsigned i = 0; i < kdp_init_page_list_head; i++) {
+		kdp_protect_one_page(kdp_init_page_list[i]);
+	}
+
+	/* set data protection as enabled */
+	*((int *)(virt_to_shadow(&kdp_enabled))) = 1;
+
 	/* restore old pgd */
 	cpu_switch_mm_with_asid(old_pg, 0);
 	flush_tlb_all();
-
-	/* set data protection as enabled */
-	kdp_enabled = 1;
 }
 
 void kdp_protect_page(struct page *page)
@@ -309,17 +331,22 @@ void kdp_protect_page(struct page *page)
 	void *address;
 	int i, start, end;
 
-	if (unlikely(page == NULL || !kdp_enabled))
+	if (unlikely((page == NULL)))
 		return;
 
 	order = compound_order(page);
+	if (order == 0)
+		return;
 	start = 1 << (order - 1);
 	end = 1 << order;
 
 	for (i = start; i < end; ++i) {
 		address = page_address(&page[i]);
-		pr_info("KCFI: protectioning page 0x%p\n", address);
-		kdp_protect_one_page(address);
+		//pr_info("KDFI: protect page 0x%p\n", address);
+		if (likely(kdp_enabled))
+			kdp_protect_one_page(address);
+		else
+			kdp_protect_init_page(address);
 	}
 }
 
@@ -329,7 +356,7 @@ void kdp_unprotect_page(struct page *page)
 	void *address;
 	int i, start, end;
 
-	if (unlikely(page == NULL || !kdp_enabled))
+	if (unlikely(page == NULL))
 		return;
 
 	order = compound_order(page);
@@ -347,7 +374,7 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
 	if (unlikely(((unsigned long)dest < PAGE_OFFSET) ||
 	             ((unsigned long)src < PAGE_OFFSET) ||
 		     (!kdp_enabled))) {
-		//memcpy(dest, src, count);
+		memcpy(dest, src, count);
 		return;
 	}
 
@@ -379,8 +406,10 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
 
 void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 {
-	if (unlikely(addr < PAGE_OFFSET || !kdp_enabled))
+	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
+		*addr = value;
 		return;
+	}
 
 	unsigned long sa = (unsigned long)virt_to_shadow(addr);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
@@ -402,8 +431,10 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 
 void atomic32_write_shadow(unsigned long *addr, unsigned value)
 {
-	if (unlikely(addr < PAGE_OFFSET || !kdp_enabled))
+	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
+		*((unsigned*)addr) = value;
 		return;
+	}
 
 	unsigned long sa = (unsigned long)virt_to_shadow(addr);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
@@ -425,8 +456,10 @@ void atomic32_write_shadow(unsigned long *addr, unsigned value)
 
 void atomic16_write_shadow(unsigned long *addr, unsigned short value)
 {
-	if (unlikely(addr < PAGE_OFFSET || !kdp_enabled))
+	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
+		*((unsigned short*)addr) = value;
 		return;
+	}
 
 	unsigned long sa = (unsigned long)virt_to_shadow(addr);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
@@ -448,8 +481,10 @@ void atomic16_write_shadow(unsigned long *addr, unsigned short value)
 
 void atomic8_write_shadow(unsigned long *addr, unsigned char value)
 {
-	if (unlikely(addr < PAGE_OFFSET || !kdp_enabled))
+	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
+		*((unsigned char*)addr) = value;
 		return;
+	}
 
 	unsigned long sa = (unsigned long)virt_to_shadow(addr);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
