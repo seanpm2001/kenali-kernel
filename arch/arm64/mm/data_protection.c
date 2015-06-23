@@ -36,7 +36,7 @@ int __init kdp_init(void)
 #ifdef CONFIG_SMP
 	prot_sect_shadow |= PMD_SECT_S;
 #endif
-		
+
 	memset(shadow_pg_dir, 0, SHADOW_DIR_SIZE);
 
 	/*

@@ -61,14 +61,6 @@ SECTIONS
 	_etext = .;			/* End of text and rodata section */
 
 	. = ALIGN(PAGE_SIZE);
-	_data = .;
-	_sdata = .;
-	RW_DATA_SECTION(64, PAGE_SIZE, THREAD_SIZE)
-	_edata = .;
-
-	BSS_SECTION(0, 0, 0)
-
-	. = ALIGN(PAGE_SIZE);
 	__init_begin = .;
 
 	INIT_TEXT_SECTION(8)
@@ -96,6 +88,14 @@ SECTIONS
 	PERCPU_SECTION(64)
 
 	__init_end = .;
+
+	. = ALIGN(PAGE_SIZE);
+	_data = .;
+	_sdata = .;
+	RW_DATA_SECTION(64, PAGE_SIZE, THREAD_SIZE)
+	_edata = .;
+
+	BSS_SECTION(0, 0, 0)
 	_end = .;
 
 	STABS_DEBUG
