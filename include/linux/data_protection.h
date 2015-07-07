@@ -14,9 +14,9 @@ void kdp_protect_init_page(void* address);
 
 void atomic_memcpy_shadow(void *dest, const void *src, size_t count);
 void atomic64_write_shadow(unsigned long *addr, unsigned long value);
-void atomic32_write_shadow(unsigned long *addr, unsigned value);
-void atomic16_write_shadow(unsigned long *addr, unsigned short value);
-void atomic8_write_shadow(unsigned long *addr, unsigned char value);
+void atomic32_write_shadow(unsigned *addr, unsigned value);
+void atomic16_write_shadow(unsigned short *addr, unsigned short value);
+void atomic8_write_shadow(unsigned char *addr, unsigned char value);
 
 #else
 #define kdp_enabled 0

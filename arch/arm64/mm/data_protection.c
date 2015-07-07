@@ -429,10 +429,10 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 	: "x2", "x3", "memory");
 }
 
-void atomic32_write_shadow(unsigned long *addr, unsigned value)
+void atomic32_write_shadow(unsigned *addr, unsigned value)
 {
 	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
-		*((unsigned*)addr) = value;
+		*addr = value;
 		return;
 	}
 
@@ -454,10 +454,10 @@ void atomic32_write_shadow(unsigned long *addr, unsigned value)
 	: "x2", "x3", "memory");
 }
 
-void atomic16_write_shadow(unsigned long *addr, unsigned short value)
+void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 {
 	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
-		*((unsigned short*)addr) = value;
+		*addr = value;
 		return;
 	}
 
@@ -479,10 +479,10 @@ void atomic16_write_shadow(unsigned long *addr, unsigned short value)
 	: "x2", "x3", "memory");
 }
 
-void atomic8_write_shadow(unsigned long *addr, unsigned char value)
+void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 {
 	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
-		*((unsigned char*)addr) = value;
+		*addr = value;
 		return;
 	}
 
