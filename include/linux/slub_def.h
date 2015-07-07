@@ -168,8 +168,9 @@ static __always_inline void *kmalloc(size_t size, gfp_t flags)
 				return ZERO_SIZE_PTR;
 
 #ifdef CONFIG_DATA_PROTECTION
-			return kmem_cache_alloc_trace(kmalloc_caches_s[index],
-					flags, size);
+			if (unlikely(flags & GFP_SENSITIVE))
+				return kmem_cache_alloc_trace(kmalloc_caches_s[index],
+						flags, size);
 #endif
 			return kmem_cache_alloc_trace(kmalloc_caches[index],
 					flags, size);
@@ -206,8 +207,9 @@ static __always_inline void *kmalloc_node(size_t size, gfp_t flags, int node)
 			return ZERO_SIZE_PTR;
 
 #ifdef CONFIG_DATA_PROTECTION
-		return kmem_cache_alloc_node_trace(kmalloc_caches_s[index],
-			       flags, node, size);
+		if (unlikely(flags & GFP_SENSITIVE))
+			return kmem_cache_alloc_node_trace(kmalloc_caches_s[index],
+				       flags, node, size);
 #endif
 		return kmem_cache_alloc_node_trace(kmalloc_caches[index],
 			       flags, node, size);
