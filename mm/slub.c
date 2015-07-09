@@ -1272,8 +1272,6 @@ static inline struct page *alloc_slab_page(gfp_t flags, int node,
 	 */
 	if (unlikely((flags & GFP_SENSITIVE))) {
 		//BUG_ON(order != 0);
-		printk(KERN_INFO "KDFI: allocate sensitive slub\n");
-
 		flags |= __GFP_COMP;
 		order += 1;
 	}
@@ -1302,6 +1300,9 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	 * so we fall-back to the minimum order allocation.
 	 */
 	alloc_gfp = (flags | __GFP_NOWARN | __GFP_NORETRY) & ~__GFP_NOFAIL;
+
+	if (unlikely((alloc_gfp & GFP_SENSITIVE)))
+		printk(KERN_INFO "KDFI: allocate sensitive slub for %s, order = %d\n", s->name, oo_order(oo));
 
 	page = alloc_slab_page(alloc_gfp, node, oo);
 	if (unlikely(!page)) {
@@ -1348,7 +1349,8 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	mod_zone_page_state(page_zone(page),
 		(s->flags & SLAB_RECLAIM_ACCOUNT) ?
 		NR_SLAB_RECLAIMABLE : NR_SLAB_UNRECLAIMABLE,
-		1 << oo_order(oo));
+		(flags & GFP_SENSITIVE) ?
+		1 << (oo_order(oo) + 1) : 1 << oo_order(oo));
 
 	return page;
 }
@@ -1357,8 +1359,13 @@ static void setup_object(struct kmem_cache *s, struct page *page,
 				void *object)
 {
 	setup_object_debug(s, page, object);
-	if (unlikely(s->ctor))
+	if (unlikely(s->ctor)) {
 		s->ctor(object);
+#ifdef CONFIG_DATA_PROTECTION
+		if (unlikely(s->flags & SLAB_SENSITIVE));
+		/* FIXME clone initialized obj */
+#endif
+	}
 }
 
 static struct page *new_slab(struct kmem_cache *s, gfp_t flags, int node)
@@ -2413,8 +2420,13 @@ redo:
 		stat(s, ALLOC_FASTPATH);
 	}
 
-	if (unlikely(gfpflags & __GFP_ZERO) && object)
+	if (unlikely(gfpflags & __GFP_ZERO) && object) {
 		memset(object, 0, s->object_size);
+#ifdef CONFIG_DATA_PROTECTION
+		if (unlikely(gfpflags & GFP_SENSITIVE))
+			atomic_memset_shadow(object, 0, s->object_size);
+#endif
+	}
 
 	slab_post_alloc_hook(s, gfpflags, object);
 

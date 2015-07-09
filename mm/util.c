@@ -9,6 +9,7 @@
 #include <linux/swapops.h>
 #include <linux/vmalloc.h>
 #include <asm/uaccess.h>
+#include <linux/data_protection.h>
 
 #include "internal.h"
 
@@ -72,8 +73,13 @@ void *kmemdup(const void *src, size_t len, gfp_t gfp)
 	void *p;
 
 	p = kmalloc_track_caller(len, gfp);
-	if (p)
+	if (p) {
 		memcpy(p, src, len);
+#ifdef CONFIG_DATA_PROTECTION
+		if (unlikely((gfp & GFP_SENSITIVE)))
+			atomic_memcpy_shadow(p, src, len);
+#endif
+	}
 	return p;
 }
 EXPORT_SYMBOL(kmemdup);
