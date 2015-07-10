@@ -8,6 +8,11 @@
 #include <asm/proc-fns.h>
 #include <asm/tlbflush.h>
 
+//#define SOBJ_START ((void*)_etext)
+#define SOBJ_START ((void*)_edata)
+
+#define DEBUG_SOBJ
+
 int kdp_enabled __section(.rodata);
 
 static pmdval_t prot_sect_shadow;
@@ -345,7 +350,7 @@ void kdp_protect_page(struct page *page)
 	for (i = start; i < end; ++i) {
 		address = page_address(&page[i]);
 		pr_info("KDFI: protect page 0x%p\n", address);
-#if 0
+#ifndef DEBUG_SOBJ
 		if (likely(kdp_enabled))
 			kdp_protect_one_page(address);
 		else
@@ -367,28 +372,34 @@ void kdp_unprotect_page(struct page *page)
 	start = 1 << (order - 1);
 	end = 1 << order;
 
-	return;
+#ifndef DEBUG_SOBJ
 	for (i = start; i < end; ++i) {
 		address = page_address(&page[i]);
-		kdp_unprotect_one_page(address);
+		if (likely(kdp_enabled))
+			kdp_unprotect_one_page(address);
 	}
+#endif
 }
 
 void atomic_memset_shadow(void *dest, int c, size_t count)
 {
 	void *sdest = NULL;
-	if ((unsigned long)dest > PAGE_OFFSET && (unsigned long)dest < (PAGE_OFFSET + SZ_2G)) {
+	if (dest > SOBJ_START && (unsigned long)dest < (PAGE_OFFSET + SZ_2G)) {
 		// has shadow object?
-		if (dest > (void *)_etext)
-			dest += kdp_get_shadow_offset(count);
-		sdest = virt_to_shadow(dest);
+		sdest = dest + kdp_get_shadow_offset(count);
 	}
 
-	if (unlikely(((sdest == NULL) || !kdp_enabled))) {
+	if (unlikely(sdest == NULL)) {
 		memset(dest, c, count);
 		return;
 	}
 
+	if (unlikely(!kdp_enabled)) {
+		memset(sdest, c, count);
+		return;
+	}
+
+	sdest = virt_to_shadow(sdest);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long old_pgd, flags;
 
@@ -405,7 +416,7 @@ void atomic_memset_shadow(void *dest, int c, size_t count)
 	memset(sdest, c, count);
 
 	asm volatile(
-	"	dmb	ish\n"
+	"	dmb	ishst\n"
 	"	msr	ttbr0_el1, %0\n"
 	"	isb	\n"
 	"	msr	daif, %1\n"
@@ -416,21 +427,26 @@ void atomic_memset_shadow(void *dest, int c, size_t count)
 void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
 {
 	void *sdest = NULL;
-	if ((unsigned long)dest > PAGE_OFFSET && (unsigned long)dest < (PAGE_OFFSET + SZ_2G)) {
+	if (dest > SOBJ_START && (unsigned long)dest < (PAGE_OFFSET + SZ_2G)) {
 		// has shadow object?
-		if (dest > (void *)_etext)
-			dest += kdp_get_shadow_offset(count);
-		sdest = virt_to_shadow(dest);
+		sdest = dest + kdp_get_shadow_offset(count);
 	}
-	if (src > (void *)_etext && (unsigned long)src < (PAGE_OFFSET + SZ_2G)) {
-		src += kdp_get_shadow_offset(count);
+	const void *ssrc = src;
+	if (src > SOBJ_START && (unsigned long)src < (PAGE_OFFSET + SZ_2G)) {
+		ssrc += kdp_get_shadow_offset(count);
 	}
 
-	if (unlikely(((sdest == NULL) || !kdp_enabled))) {
+	if (unlikely(sdest == NULL)) {
 		memcpy(dest, src, count);
 		return;
 	}
 
+	if (unlikely(!kdp_enabled)) {
+		memcpy(sdest, ssrc, count);
+		return;
+	}
+
+	sdest = virt_to_shadow(sdest);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long old_pgd, flags;
 
@@ -444,7 +460,7 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
 	: "r" (pgd)
 	:);
 
-	memcpy(sdest, src, count);
+	memcpy(sdest, ssrc, count);
 
 	asm volatile(
 	"	dmb	ish\n"
