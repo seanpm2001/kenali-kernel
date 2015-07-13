@@ -31,8 +31,13 @@ char *kstrdup(const char *s, gfp_t gfp)
 
 	len = strlen(s) + 1;
 	buf = kmalloc_track_caller(len, gfp);
-	if (buf)
+	if (buf) {
 		memcpy(buf, s, len);
+#ifdef CONFIG_DATA_PROTECTION
+		if (unlikely((gfp & GFP_SENSITIVE)))
+			atomic_memcpy_shadow(buf, s, len);
+#endif
+	}
 	return buf;
 }
 EXPORT_SYMBOL(kstrdup);
@@ -56,6 +61,11 @@ char *kstrndup(const char *s, size_t max, gfp_t gfp)
 	if (buf) {
 		memcpy(buf, s, len);
 		buf[len] = '\0';
+#ifdef CONFIG_DATA_PROTECTION
+		/* copy len+1 to include to tailing \0 */
+		if (unlikely((gfp & GFP_SENSITIVE)))
+			atomic_memcpy_shadow(buf, s, len+1);
+#endif
 	}
 	return buf;
 }
@@ -127,8 +137,13 @@ static __always_inline void *__do_krealloc(const void *p, size_t new_size,
 		return (void *)p;
 
 	ret = kmalloc_track_caller(new_size, flags);
-	if (ret && p)
+	if (ret && p) {
 		memcpy(ret, p, ks);
+#ifdef CONFIG_DATA_PROTECTION
+		if (unlikely((flags & GFP_SENSITIVE)))
+			atomic_memcpy_shadow(ret, p, ks);
+#endif
+	}
 
 	return ret;
 }
