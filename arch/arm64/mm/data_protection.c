@@ -11,7 +11,7 @@
 //#define SOBJ_START ((void*)_etext)
 #define SOBJ_START ((void*)_edata)
 
-#define DEBUG_SOBJ
+//#define DEBUG_SOBJ
 
 int kdp_enabled __section(.rodata);
 
@@ -349,7 +349,7 @@ void kdp_protect_page(struct page *page)
 
 	for (i = start; i < end; ++i) {
 		address = page_address(&page[i]);
-		pr_info("KDFI: protect page 0x%p\n", address);
+		//pr_info("KDFI: protect page 0x%p\n", address);
 #ifndef DEBUG_SOBJ
 		if (likely(kdp_enabled))
 			kdp_protect_one_page(address);
