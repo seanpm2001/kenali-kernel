@@ -199,16 +199,16 @@ static void inline flush_kern_tlb_one_page(void* address)
 	: : "r" (address));
 }
 
-#define KDP_INIT_PAGE_LIST	64
-static void* kdp_init_page_list[KDP_INIT_PAGE_LIST];
+#define KDP_INIT_PAGE_LIST 4096
+static void* kdp_init_page_list[KDP_INIT_PAGE_LIST] __initdata = { 0 };
 static unsigned kdp_init_page_list_head = 0;
 
 void kdp_protect_init_page(void* address) {
 
-	pr_info("KDFI: enqueue page %p\n", address);
+	//pr_info("KDFI: enqueue page %p\n", address);
 
 	if (unlikely(kdp_init_page_list_head >= KDP_INIT_PAGE_LIST)) {
-		pr_err("KDFI: list size too small\n");
+		pr_err("KDFI: list size too small %d\n", kdp_init_page_list_head++);
 		return;
 	}
 
@@ -340,7 +340,7 @@ void kdp_protect_page(struct page *page)
 		return;
 
 	order = compound_order(page);
-	if (order == 0) {
+	if (unlikely(order == 0)) {
 		pr_warning("KDFI: page order < 1\n");
 		return;
 	}
@@ -369,14 +369,21 @@ void kdp_unprotect_page(struct page *page)
 		return;
 
 	order = compound_order(page);
+	if (unlikely(order == 0)) {
+		pr_warning("KDFI: page order < 1\n");
+		return;
+	}
 	start = 1 << (order - 1);
 	end = 1 << order;
 
 #ifndef DEBUG_SOBJ
 	for (i = start; i < end; ++i) {
 		address = page_address(&page[i]);
+		//pr_info("KDFI: unprotect page 0x%p\n", address);
 		if (likely(kdp_enabled))
 			kdp_unprotect_one_page(address);
+		else
+			pr_warning("KDFI: unprotect called when kdp is not enabled\n");
 	}
 #endif
 }
