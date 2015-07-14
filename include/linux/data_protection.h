@@ -13,7 +13,7 @@ void kdp_unprotect_page(struct page *page);
 void kdp_protect_init_page(void* address);
 
 static inline size_t kdp_get_shadow_offset(size_t size) {
-	if (size <= 256)
+	if (size <= 312)
 		return SZ_4K;
 	else if (size <= 656)
 		return SZ_8K;
