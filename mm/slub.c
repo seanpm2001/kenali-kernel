@@ -1301,8 +1301,10 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	 */
 	alloc_gfp = (flags | __GFP_NOWARN | __GFP_NORETRY) & ~__GFP_NOFAIL;
 
+	/*
 	if (unlikely((alloc_gfp & GFP_SENSITIVE)))
 		printk(KERN_INFO "KDFI: allocate sensitive slub for %s, order = %d\n", s->name, oo_order(oo));
+	*/
 
 	page = alloc_slab_page(alloc_gfp, node, oo);
 	if (unlikely(!page)) {
@@ -1436,7 +1438,7 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 	__ClearPageSlabPfmemalloc(page);
 	__ClearPageSlab(page);
 
-	if (s->flags & SLAB_SENSITIVE) {
+	if (unlikely(s->flags & SLAB_SENSITIVE)) {
 		kdp_unprotect_page(page);
 	}
 
@@ -3391,6 +3393,9 @@ void kfree(const void *x)
 	if (unlikely(!PageSlab(page))) {
 		BUG_ON(!PageCompound(page));
 		kmemleak_free(x);
+#ifdef CONFIG_DATA_PROTECTION
+		kdp_unprotect_page(page);
+#endif
 		__free_memcg_kmem_pages(page, compound_order(page));
 		return;
 	}
