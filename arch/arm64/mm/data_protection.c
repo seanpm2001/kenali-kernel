@@ -1,10 +1,12 @@
 #include <linux/mm.h>
 #include <linux/memblock.h>
 #include <linux/printk.h>
+#include <linux/random.h>
 #include <linux/data_protection.h>
 
 #include <asm/sections.h>
 #include <asm/pgtable.h>
+#include <asm/pgalloc.h>
 #include <asm/proc-fns.h>
 #include <asm/tlbflush.h>
 
@@ -14,6 +16,14 @@
 //#define DEBUG_SOBJ
 
 int kdp_enabled __section(.rodata);
+
+struct kdp_stack_mapping {
+	void *addr;
+	void *rand_addr;
+};
+#define KDP_STACK_MAP_SIZE 4096
+static struct kdp_stack_mapping kdp_stack_map[KDP_STACK_MAP_SIZE] = {};
+static DEFINE_SPINLOCK(kdp_stack_map_lock);
 
 static pmdval_t prot_sect_shadow;
 
@@ -182,8 +192,6 @@ static pte_t *lookup_address(unsigned long address, unsigned int *level)
 
 	*level = PG_LEVEL_4K;
 	pte = pte_offset_kernel(pmd, address);
-	if (unlikely(!pte_present(*pte)))
-		return NULL;
 
 	return pte;
 }
@@ -200,10 +208,14 @@ static void inline flush_kern_tlb_one_page(void* address)
 }
 
 #define KDP_INIT_PAGE_LIST 4096
-static void* kdp_init_page_list[KDP_INIT_PAGE_LIST] __initdata = { 0 };
+struct kdp_init_page_item {
+	void* addr;
+	pgprot_t prot;
+};
+static struct kdp_init_page_item kdp_init_page_list[KDP_INIT_PAGE_LIST] __initdata = {};
 static unsigned kdp_init_page_list_head = 0;
 
-void kdp_protect_init_page(void* address) {
+static void _kdp_protect_init_page(void* address, pgprot_t prot) {
 
 	//pr_info("KDFI: enqueue page %p\n", address);
 
@@ -212,10 +224,17 @@ void kdp_protect_init_page(void* address) {
 		return;
 	}
 
-	kdp_init_page_list[kdp_init_page_list_head++] = address;
+	kdp_init_page_list[kdp_init_page_list_head].addr = address;
+	kdp_init_page_list[kdp_init_page_list_head].prot = prot;
+	kdp_init_page_list_head++;
 }
 
-void kdp_protect_one_page(void* address)
+void kdp_protect_init_page(void *address)
+{
+	_kdp_protect_init_page(address, PAGE_KERNEL_READONLY);
+}
+
+static void _kdp_protect_one_page(void* address, pgprot_t prot)
 {
 	pte_t *ptep, pte;
 	unsigned int level;
@@ -227,13 +246,21 @@ void kdp_protect_one_page(void* address)
 	BUG_ON(!ptep);
 	BUG_ON(level != PG_LEVEL_4K);
 
-	pte = pte_modify(*ptep, PAGE_KERNEL_READONLY);
+	pte = pte_modify(*ptep, prot);
+	if (unlikely(pte == *ptep))
+		return;
+
 	if (likely(kdp_enabled)) {
 		set_pte(ptep, pte);
 		flush_kern_tlb_one_page(address);
 	} else {
 		set_pte(virt_to_shadow(ptep), pte);
 	}
+}
+
+void kdp_protect_one_page(void *address)
+{
+	_kdp_protect_one_page(address, PAGE_KERNEL_READONLY);
 }
 
 void kdp_unprotect_one_page(void* address)
@@ -319,8 +346,11 @@ void kdp_enable(void)
 	pr_info("KDFI: init pages = %d\n", kdp_init_page_list_head);
 	/* protect enqueued pages */
 	for (unsigned i = 0; i < kdp_init_page_list_head; i++) {
-		kdp_protect_one_page(kdp_init_page_list[i]);
+		_kdp_protect_one_page(kdp_init_page_list[i].addr,
+				kdp_init_page_list[i].prot);
 	}
+
+	/* FIXME gone through kdp_stack_map and protect stack page */
 
 	/* set data protection as enabled */
 	*((int *)(virt_to_shadow(&kdp_enabled))) = 1;
@@ -386,6 +416,266 @@ void kdp_unprotect_page(struct page *page)
 			pr_warning("KDFI: unprotect called when kdp is not enabled\n");
 	}
 #endif
+}
+
+static void kdp_unmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end)
+{
+	pte_t *pte;
+
+	pte = pte_offset_kernel(pmd, addr);
+	do {
+		pte_t ptent = ptep_get_and_clear(&init_mm, addr, pte);
+		WARN_ON(!pte_none(ptent) && !pte_present(ptent));
+	} while (pte++, addr += PAGE_SIZE, addr != end);
+
+	pte = pmd_page_vaddr(*pmd);
+	int pte_count = 0;
+	for (int i = 0; i < PTRS_PER_PTE; i++)
+		pte_count += !!pte_val(pte[i]);
+	/* free likely empty pte */
+	if (likely(!pte_count))
+		pte_free_kernel(&init_mm, pte);
+}
+
+static void kdp_unmap_pmd_range(pud_t *pud, unsigned long addr, unsigned long end)
+{
+	pmd_t *pmd;
+	unsigned long next;
+
+	pmd = pmd_offset(pud, addr);
+	do {
+		next = pmd_addr_end(addr, end);
+		if (pmd_none_or_clear_bad(pmd))
+			continue;
+		kdp_unmap_pte_range(pmd, addr, next);
+	} while (pmd++, addr = next, addr != end);
+
+	//pmd = pmd_offset(pud, addr);
+	//pmd_free(&init_mm, pmd);
+}
+
+static void kdp_unmap_pud_range(pgd_t *pgd, unsigned long addr, unsigned long end)
+{
+	pud_t *pud;
+	unsigned long next;
+
+	pud = pud_offset(pgd, addr);
+	do {
+		next = pud_addr_end(addr, end);
+		if (pud_none_or_clear_bad(pud))
+			continue;
+		kdp_unmap_pmd_range(pud, addr, next);
+	} while (pud++, addr = next, addr != end);
+}
+
+static void kdp_unmap_page_range(unsigned long addr, unsigned long end)
+{
+	pgd_t *pgd;
+	unsigned long next;
+
+	pgd = pgd_offset_k(addr);
+	do {
+		next = pgd_addr_end(addr, end);
+		if (pgd_none_or_clear_bad(pgd))
+			continue;
+		kdp_unmap_pud_range(pgd, addr, next);
+	} while (pgd++, addr = next, addr != end);
+}
+
+static int kdp_map_pte_range(pmd_t *pmd, unsigned long addr, unsigned long end,
+			     struct page *page, int *nr)
+{
+	pte_t *pte;
+
+	pte = pte_alloc_kernel(pmd, addr);
+	if (!pte)
+		return -ENOMEM;
+	do {
+		struct page *target = &page[*nr];
+
+		if (WARN_ON(!pte_none(*pte)))
+			return -EBUSY;
+		if (WARN_ON(!page))
+			return -ENOMEM;
+		set_pte_at(&init_mm, addr, pte, mk_pte(target, PAGE_KERNEL));
+		(*nr)++;
+	} while (pte++, addr += PAGE_SIZE, addr != end);
+	
+	return 0;
+}
+
+static int kdp_map_pmd_range(pud_t *pud, unsigned long addr, unsigned long end,
+			     struct page *page, int *nr)
+{
+	pmd_t *pmd;
+	unsigned long next;
+	int err;
+
+	pmd = pmd_alloc(&init_mm, pud, addr);
+	if (!pmd)
+		return -ENOMEM;
+	do {
+		next = pmd_addr_end(addr, end);
+		err = kdp_map_pte_range(pmd, addr, next, page, nr);
+		if (err)
+			return err;
+	} while (pmd++, addr = next, addr != end);
+
+	return 0;
+}
+
+static int kdp_map_pud_range(pgd_t *pgd, unsigned long addr, unsigned long end,
+			     struct page *page, int *nr)
+{
+	pud_t *pud;
+	unsigned long next;
+	int err;
+
+	pud = pud_alloc(&init_mm, pgd, addr);
+	if (!pud)
+		return -ENOMEM;
+	do {
+		next = pud_addr_end(addr, end);
+		err = kdp_map_pmd_range(pud, addr, next, page, nr);
+		if (err)
+			return err;
+	} while (pud++, addr = next, addr != end);
+
+	return 0;
+}
+
+static int kdp_map_page_range(unsigned long start, unsigned long end,
+			      struct page *page, int *nr)
+{
+	pgd_t *pgd;
+	unsigned long next;
+	unsigned long addr = start;
+	int err = 0;
+
+	pgd = pgd_offset_k(addr);
+	do {
+		next = pgd_addr_end(addr, end);
+		err = kdp_map_pud_range(pgd, addr, next, page, nr);
+		if (err)
+			return err;
+	} while (pgd++, addr = next, addr != end);
+
+	return 0;
+}
+
+void *kdp_get_real_stack(void *stack)
+{
+	for (int i = 0; i < KDP_STACK_MAP_SIZE; i++) {
+		if (kdp_stack_map[i].addr == stack)
+			return kdp_stack_map[i].rand_addr;
+	}
+	return stack;
+}
+
+static int kdp_set_real_stack(void *real_stack, void *rand_stack)
+{
+	/* FIXME replace linear search with better ones */
+	int i;
+	spin_lock(&kdp_stack_map_lock);
+	for (i = 0; i < KDP_STACK_MAP_SIZE; i++) {
+		if (kdp_stack_map[i].addr == NULL) {
+			kdp_stack_map[i].addr = real_stack;
+			kdp_stack_map[i].rand_addr = rand_stack;
+			break;
+		}
+	}
+	spin_unlock(&kdp_stack_map_lock);
+
+	WARN_ON(i == KDP_STACK_MAP_SIZE);
+	return i;
+}
+
+void *kdp_map_stack(struct page *page)
+{
+	unsigned long start, addr, end, range, random;
+	void *page_addr;
+	int nr = 0;
+	int err;
+
+	if (unlikely(!page))
+		return NULL;
+
+	/* FIXME should be the end of physical memory
+	 * currently use 4G, as most devices have less than 4G memory */
+	start = PAGE_OFFSET + SZ_4G;
+	range = 0xffffffffffffffffULL - start - THREAD_SIZE;
+
+try_again:
+	/* FIXME should use tree like structure to maintain mapped
+	 * addresses, currently uses a re-try based approach,
+	 * assuming randomized stack are unlikely to overlap */
+	get_random_bytes(&random, sizeof(random));
+	addr = ALIGN(random % (range + 1) + start, PAGE_SIZE << THREAD_SIZE_ORDER);
+	end = addr + THREAD_SIZE;
+	/* in case overflows due to alignment */
+	while (addr >= end) {
+		addr -= PAGE_SIZE << THREAD_SIZE_ORDER;
+		end = addr + THREAD_SIZE;
+	}
+
+	pr_info("KDFI: map stack at %lx\n", addr);
+	err = kdp_map_page_range(addr, end, page, &nr);
+	if (unlikely(err)) {
+		if (nr > 0) {
+			end = addr + PAGE_SIZE * nr;
+			kdp_unmap_page_range(addr, end);
+		}
+
+		/* overlapping */
+		if (err == -EBUSY)
+			goto try_again;
+
+		return NULL;
+	}
+
+	kdp_set_real_stack(page_address(page), (void *)addr);
+	flush_tlb_kernel_range(addr, end);
+
+	WARN_ON(nr != THREAD_SIZE/PAGE_SIZE);
+
+	/* mark page as inaccessible */
+	page_addr = page_address(page);
+	if (likely(kdp_enabled)) {
+		for (int i = 0; i < nr; i++)
+			_kdp_protect_one_page(page_addr + i * PAGE_SIZE, PAGE_NONE);
+	}
+
+	return page_addr;
+}
+
+void kdp_unmap_stack(void *addr)
+{
+	unsigned long start = 0, end;
+
+	spin_lock(&kdp_stack_map_lock);
+	for (int i = 0; i < KDP_STACK_MAP_SIZE; i++) {
+		if (kdp_stack_map[i].addr == addr) {
+			start = (unsigned long)kdp_stack_map[i].rand_addr;
+			kdp_stack_map[i].addr = NULL;
+			break;
+		}
+	}
+	spin_unlock(&kdp_stack_map_lock);
+
+	if (!start)
+		return;
+
+	end = start + THREAD_SIZE;
+	//pr_info("KDFI: unmap stack %lx - %lx\n", start, end);
+	kdp_unmap_page_range(start, end);
+	flush_tlb_kernel_range(start, end);
+
+	end = (unsigned long)addr + THREAD_SIZE;
+	if (likely(kdp_enabled)) {
+		do {
+			kdp_unprotect_one_page(addr);
+		} while (addr += PAGE_SIZE, (unsigned long)addr != end);
+	}
 }
 
 void atomic_memset_shadow(void *dest, int c, size_t count)

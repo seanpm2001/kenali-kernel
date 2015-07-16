@@ -71,6 +71,7 @@
 #include <linux/signalfd.h>
 #include <linux/uprobes.h>
 #include <linux/aio.h>
+#include <linux/data_protection.h>
 
 #include <asm/pgtable.h>
 #include <asm/pgalloc.h>
@@ -151,7 +152,11 @@ static struct thread_info *alloc_thread_info_node(struct task_struct *tsk,
 	struct page *page = alloc_pages_node(node, THREADINFO_GFP_ACCOUNTED,
 					     THREAD_SIZE_ORDER);
 
+#ifdef CONFIG_DATA_PROTECTION
+	return kdp_map_stack(page);
+#else
 	return page ? page_address(page) : NULL;
+#endif
 }
 
 static inline void free_thread_info(struct thread_info *ti)
@@ -211,6 +216,9 @@ static void account_kernel_stack(struct thread_info *ti, int account)
 
 void free_task(struct task_struct *tsk)
 {
+#ifdef CONFIG_DATA_PROTECTION
+	kdp_unmap_stack(tsk->stack);
+#endif
 	account_kernel_stack(tsk->stack, -1);
 	arch_release_thread_info(tsk->stack);
 	free_thread_info(tsk->stack);
