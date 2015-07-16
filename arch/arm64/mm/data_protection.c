@@ -397,7 +397,7 @@ void atomic_memset_shadow(void *dest, int c, size_t count)
 	}
 
 	if (unlikely(sdest == NULL)) {
-		memset(dest, c, count);
+		//memset(dest, c, count);
 		return;
 	}
 
@@ -444,7 +444,7 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
 	}
 
 	if (unlikely(sdest == NULL)) {
-		memcpy(dest, src, count);
+		//memcpy(dest, src, count);
 		return;
 	}
 
