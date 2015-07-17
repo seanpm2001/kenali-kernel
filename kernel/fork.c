@@ -216,12 +216,13 @@ static void account_kernel_stack(struct thread_info *ti, int account)
 
 void free_task(struct task_struct *tsk)
 {
+	void *stack = tsk->stack;
 #ifdef CONFIG_DATA_PROTECTION
-	kdp_unmap_stack(tsk->stack);
+	stack = kdp_unmap_stack(stack);
 #endif
-	account_kernel_stack(tsk->stack, -1);
-	arch_release_thread_info(tsk->stack);
-	free_thread_info(tsk->stack);
+	account_kernel_stack(stack, -1);
+	arch_release_thread_info(stack);
+	free_thread_info(stack);
 	rt_mutex_debug_task_free(tsk);
 	ftrace_graph_exit_task(tsk);
 	put_seccomp_filter(tsk);
@@ -367,7 +368,11 @@ static struct task_struct *dup_task_struct(struct task_struct *orig)
 	tsk->splice_pipe = NULL;
 	tsk->task_frag.page = NULL;
 
+#ifdef CONFIG_DATA_PROTECTION
+	account_kernel_stack(kdp_get_stack_page(ti), 1);
+#else
 	account_kernel_stack(ti, 1);
+#endif
 
 	return tsk;
 

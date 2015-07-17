@@ -12,7 +12,8 @@ void kdp_protect_page(struct page *page);
 void kdp_unprotect_page(struct page *page);
 void kdp_protect_init_page(void* address);
 void *kdp_map_stack(struct page *page);
-void kdp_unmap_stack(void *addr);
+void *kdp_unmap_stack(void *addr);
+struct page *kdp_get_stack_page(void *stack);
 
 static inline size_t kdp_get_shadow_offset(size_t size) {
 	if (size <= 312)
@@ -43,7 +44,10 @@ static inline void *kdp_map_stack(struct page *page)
 {
 	return page ? page_address(page) : NULL;
 }
-static inline void kdp_unmap_stack(void *addr) { }
+static inline void kdp_unmap_stack(void *addr)
+{
+	return addr;
+}
 
 #endif /* CONFIG_DATA_PROTECTION */
 

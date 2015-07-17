@@ -17,13 +17,18 @@
 
 int kdp_enabled __section(.rodata);
 
+#define KDP_STACK_START (PAGE_OFFSET + SZ_4G)
+
 struct kdp_stack_mapping {
 	void *addr;
 	void *rand_addr;
 };
 #define KDP_STACK_MAP_SIZE 4096
-static struct kdp_stack_mapping kdp_stack_map[KDP_STACK_MAP_SIZE] = {};
+struct kdp_stack_mapping kdp_stack_map[KDP_STACK_MAP_SIZE] __section(.kdp_secret);
 static DEFINE_SPINLOCK(kdp_stack_map_lock);
+
+#define KDP_STACK_MAP_START	((void*)kdp_stack_map)
+#define KDP_STACK_MAP_END	((void*)&kdp_stack_map[KDP_STACK_MAP_SIZE-1])
 
 static pmdval_t prot_sect_shadow;
 
@@ -428,6 +433,7 @@ static void kdp_unmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long en
 		WARN_ON(!pte_none(ptent) && !pte_present(ptent));
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 
+#if 0
 	pte = pmd_page_vaddr(*pmd);
 	int pte_count = 0;
 	for (int i = 0; i < PTRS_PER_PTE; i++)
@@ -435,6 +441,7 @@ static void kdp_unmap_pte_range(pmd_t *pmd, unsigned long addr, unsigned long en
 	/* free likely empty pte */
 	if (likely(!pte_count))
 		pte_free_kernel(&init_mm, pte);
+#endif
 }
 
 static void kdp_unmap_pmd_range(pud_t *pud, unsigned long addr, unsigned long end)
@@ -565,10 +572,17 @@ static int kdp_map_page_range(unsigned long start, unsigned long end,
 
 void *kdp_get_real_stack(void *stack)
 {
-	for (int i = 0; i < KDP_STACK_MAP_SIZE; i++) {
-		if (kdp_stack_map[i].addr == stack)
-			return kdp_stack_map[i].rand_addr;
-	}
+	if (likely(stack >= KDP_STACK_MAP_START &&
+		   stack <= KDP_STACK_MAP_END))
+		return ((struct kdp_stack_mapping*)stack)->rand_addr;
+	return stack;
+}
+
+struct page *kdp_get_stack_page(void *stack)
+{
+	if (likely(stack >= KDP_STACK_MAP_START &&
+		   stack <= KDP_STACK_MAP_END))
+		return ((struct kdp_stack_mapping*)stack)->addr;
 	return stack;
 }
 
@@ -576,6 +590,7 @@ static int kdp_set_real_stack(void *real_stack, void *rand_stack)
 {
 	/* FIXME replace linear search with better ones */
 	int i;
+
 	spin_lock(&kdp_stack_map_lock);
 	for (i = 0; i < KDP_STACK_MAP_SIZE; i++) {
 		if (kdp_stack_map[i].addr == NULL) {
@@ -602,7 +617,7 @@ void *kdp_map_stack(struct page *page)
 
 	/* FIXME should be the end of physical memory
 	 * currently use 4G, as most devices have less than 4G memory */
-	start = PAGE_OFFSET + SZ_4G;
+	start = KDP_STACK_START;
 	range = 0xffffffffffffffffULL - start - THREAD_SIZE;
 
 try_again:
@@ -618,7 +633,6 @@ try_again:
 		end = addr + THREAD_SIZE;
 	}
 
-	pr_info("KDFI: map stack at %lx\n", addr);
 	err = kdp_map_page_range(addr, end, page, &nr);
 	if (unlikely(err)) {
 		if (nr > 0) {
@@ -633,37 +647,41 @@ try_again:
 		return NULL;
 	}
 
-	kdp_set_real_stack(page_address(page), (void *)addr);
+	page_addr = page_address(page);
+	int index = kdp_set_real_stack(page_addr, (void *)addr);
+	//pr_info("KDFI: map stack at %lx, slot = %d, slot addr = %p\n",
+	//		addr, index, &kdp_stack_map[index]);
 	flush_tlb_kernel_range(addr, end);
 
 	WARN_ON(nr != THREAD_SIZE/PAGE_SIZE);
 
 	/* mark page as inaccessible */
-	page_addr = page_address(page);
 	if (likely(kdp_enabled)) {
 		for (int i = 0; i < nr; i++)
 			_kdp_protect_one_page(page_addr + i * PAGE_SIZE, PAGE_NONE);
 	}
 
-	return page_addr;
+	return &kdp_stack_map[index];
 }
 
-void kdp_unmap_stack(void *addr)
+void *kdp_unmap_stack(void *addr)
 {
 	unsigned long start = 0, end;
+	struct kdp_stack_mapping *map;
+	void *p_addr;
 
 	spin_lock(&kdp_stack_map_lock);
-	for (int i = 0; i < KDP_STACK_MAP_SIZE; i++) {
-		if (kdp_stack_map[i].addr == addr) {
-			start = (unsigned long)kdp_stack_map[i].rand_addr;
-			kdp_stack_map[i].addr = NULL;
-			break;
-		}
+	if (likely(addr >= KDP_STACK_MAP_START &&
+		   addr <= KDP_STACK_MAP_END)) {
+		map = (struct kdp_stack_mapping*)addr;
+		start = (unsigned long)map->rand_addr;
+		p_addr = addr = map->addr;
+		map->addr = NULL;
 	}
 	spin_unlock(&kdp_stack_map_lock);
 
-	if (!start)
-		return;
+	if (unlikely(!start))
+		return addr;
 
 	end = start + THREAD_SIZE;
 	//pr_info("KDFI: unmap stack %lx - %lx\n", start, end);
@@ -676,12 +694,14 @@ void kdp_unmap_stack(void *addr)
 			kdp_unprotect_one_page(addr);
 		} while (addr += PAGE_SIZE, (unsigned long)addr != end);
 	}
+
+	return p_addr;
 }
 
 void atomic_memset_shadow(void *dest, int c, size_t count)
 {
 	void *sdest = NULL;
-	if (dest > SOBJ_START && (unsigned long)dest < (PAGE_OFFSET + SZ_2G)) {
+	if (dest > SOBJ_START && (unsigned long)dest < KDP_STACK_START) {
 		// has shadow object?
 		sdest = dest + kdp_get_shadow_offset(count);
 	}
@@ -724,12 +744,12 @@ void atomic_memset_shadow(void *dest, int c, size_t count)
 void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
 {
 	void *sdest = NULL;
-	if (dest > SOBJ_START && (unsigned long)dest < (PAGE_OFFSET + SZ_2G)) {
+	if (dest > SOBJ_START && (unsigned long)dest < KDP_STACK_START) {
 		// has shadow object?
 		sdest = dest + kdp_get_shadow_offset(count);
 	}
 	const void *ssrc = src;
-	if (src > SOBJ_START && (unsigned long)src < (PAGE_OFFSET + SZ_2G)) {
+	if (src > SOBJ_START && (unsigned long)src < KDP_STACK_START) {
 		ssrc += kdp_get_shadow_offset(count);
 	}
 
