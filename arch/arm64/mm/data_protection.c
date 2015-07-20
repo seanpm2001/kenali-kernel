@@ -698,12 +698,12 @@ void *kdp_unmap_stack(void *addr)
 	return p_addr;
 }
 
-void atomic_memset_shadow(void *dest, int c, size_t count)
+void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
 {
 	void *sdest = NULL;
 	if (dest > SOBJ_START && (unsigned long)dest < KDP_STACK_START) {
 		// has shadow object?
-		sdest = dest + kdp_get_shadow_offset(count);
+		sdest = dest + kdp_get_shadow_offset(alloc_size);
 	}
 
 	if (unlikely(sdest == NULL)) {
@@ -741,16 +741,16 @@ void atomic_memset_shadow(void *dest, int c, size_t count)
 	:);
 }
 
-void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
+void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t alloc_size)
 {
 	void *sdest = NULL;
 	if (dest > SOBJ_START && (unsigned long)dest < KDP_STACK_START) {
 		// has shadow object?
-		sdest = dest + kdp_get_shadow_offset(count);
+		sdest = dest + kdp_get_shadow_offset(alloc_size);
 	}
 	const void *ssrc = src;
 	if (src > SOBJ_START && (unsigned long)src < KDP_STACK_START) {
-		ssrc += kdp_get_shadow_offset(count);
+		ssrc += kdp_get_shadow_offset(alloc_size);
 	}
 
 	if (unlikely(sdest == NULL)) {

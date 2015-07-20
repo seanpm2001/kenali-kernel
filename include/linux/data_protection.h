@@ -26,8 +26,8 @@ static inline size_t kdp_get_shadow_offset(size_t size) {
 		return SZ_32K;
 }
 
-void atomic_memset_shadow(void *dest, int c, size_t count);
-void atomic_memcpy_shadow(void *dest, const void *src, size_t count);
+void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size);
+void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t alloc_size);
 void atomic64_write_shadow(unsigned long *addr, unsigned long value);
 void atomic32_write_shadow(unsigned *addr, unsigned value);
 void atomic16_write_shadow(unsigned short *addr, unsigned short value);
