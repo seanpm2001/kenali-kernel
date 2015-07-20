@@ -81,11 +81,11 @@ static struct inode *fuse_alloc_inode(struct super_block *sb)
 	struct inode *inode;
 	struct fuse_inode *fi;
 
-	inode = kmem_cache_alloc(fuse_inode_cachep, GFP_KERNEL);
-	if (!inode)
+	fi = kmem_cache_alloc(fuse_inode_cachep, GFP_KERNEL);
+	if (!fi)
 		return NULL;
 
-	fi = get_fuse_inode(inode);
+	inode = &fi->inode;
 	fi->i_time = 0;
 	fi->nodeid = 0;
 	fi->nlookup = 0;
@@ -99,7 +99,7 @@ static struct inode *fuse_alloc_inode(struct super_block *sb)
 	init_waitqueue_head(&fi->page_waitq);
 	fi->forget = fuse_alloc_forget();
 	if (!fi->forget) {
-		kmem_cache_free(fuse_inode_cachep, inode);
+		kmem_cache_free(fuse_inode_cachep, fi);
 		return NULL;
 	}
 
