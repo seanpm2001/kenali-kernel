@@ -329,11 +329,62 @@ static void protect_pgtable(pgd_t *pg_dir)
 	}
 }
 
+static void context_switch_test()
+{
+	unsigned long pgd = virt_to_phys(shadow_pg_dir);
+	unsigned long flags;
+	unsigned long start, end;
+	unsigned pmcr, pmcntenset;
+
+	/* enable counter */
+	asm volatile("mrs %0, pmcr_el0" : "=r" (pmcr));
+	pr_info("KDFI: pmcr = %08x\n", pmcr);
+
+	asm volatile("mrs %0, pmcntenset_el0" : "=r" (pmcntenset));
+	asm volatile(
+	"	isb\n"
+	"	msr pmcr_el0, %0\n"
+	"	msr pmcntenset_el0, %1\n"
+	"	isb\n"
+	: : "r" (pmcr | 0x5), "r" (pmcntenset | 0x80000000));
+
+	flags = arch_local_irq_save();
+	asm volatile("mrs %0, pmccntr_el0" : "=r" (start));
+
+	for(int i = 0; i < 1000000; i++) {
+		asm volatile(
+		"	mrs	x3, ttbr0_el1\n"
+		"	msr	ttbr0_el1, %0\n"
+		"	isb	\n"
+		//"	dmb	ishst\n"
+		"	msr	ttbr0_el1, x3\n"
+		"	isb	\n"
+		: : "r" (pgd)
+		: "x3", "memory");
+	}
+
+	asm volatile("mrs %0, pmccntr_el0" : "=r" (end));
+	arch_local_irq_restore(flags);
+
+	/* restore */
+	asm volatile(
+	"	isb\n"
+	"	msr pmcr_el0, %0\n"
+	"	msr pmcntenset_el0, %1\n"
+	"	isb\n"
+	: : "r" (pmcr), "r" (pmcntenset));
+
+	pr_info("KDFI: context switch, start = %ld, end = %ld, result = %ld\n",
+		start, end, end - start);
+}
+
 void kdp_enable(void)
 {
 	pgd_t* old_pg = cpu_get_pgd();
 	pr_info("KDFI: old pgd = 0x%p, zero page = 0x%lx\n",
 		old_pg, empty_zero_page);
+
+	context_switch_test();
 
 	protect_kernel();
 
@@ -790,7 +841,9 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t allo
 
 void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
+	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
+		     (unsigned long)addr > KDP_STACK_START ||
+		     !kdp_enabled)) {
 		*addr = value;
 		return;
 	}
@@ -815,7 +868,9 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 
 void atomic32_write_shadow(unsigned *addr, unsigned value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
+	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
+		     (unsigned long)addr > KDP_STACK_START ||
+		     !kdp_enabled)) {
 		*addr = value;
 		return;
 	}
@@ -840,7 +895,9 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 
 void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
+	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
+		     (unsigned long)addr > KDP_STACK_START ||
+		     !kdp_enabled)) {
 		*addr = value;
 		return;
 	}
@@ -865,7 +922,9 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 
 void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET || !kdp_enabled)) {
+	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
+		     (unsigned long)addr > KDP_STACK_START ||
+		     !kdp_enabled)) {
 		*addr = value;
 		return;
 	}
