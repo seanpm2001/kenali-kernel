@@ -384,7 +384,7 @@ void kdp_enable(void)
 	pr_info("KDFI: old pgd = 0x%p, zero page = 0x%lx\n",
 		old_pg, empty_zero_page);
 
-	context_switch_test();
+	//context_switch_test();
 
 	protect_kernel();
 
