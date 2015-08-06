@@ -44,7 +44,7 @@ static inline void *kdp_map_stack(struct page *page)
 {
 	return page ? page_address(page) : NULL;
 }
-static inline void kdp_unmap_stack(void *addr)
+static inline void *kdp_unmap_stack(void *addr)
 {
 	return addr;
 }
