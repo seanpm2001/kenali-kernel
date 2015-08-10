@@ -772,14 +772,13 @@ void kdp_alloc_shadow(struct page *page, int order, gfp_t flags, int node)
 	/* map shadow */
 	start = (unsigned long)page_address(page) + SZ_2G;
 	end = start + pages * PAGE_SIZE;
-	
+
 	err = kdp_map_page_range(start, end, shadow, &nr);
 	if (unlikely(err)) {
 		pr_err("KDFI: failed to map shadow\n");
 		__free_pages(shadow, order);
 		return;
 	}
-
 
 	for (i = 0; i < pages; ++i) {
 		address = page_address(&shadow[i]);
@@ -807,7 +806,7 @@ void kdp_free_shadow(struct page *page, int order)
 	/* unmap shadow */
 	start = (unsigned long)page_address(page) + SZ_2G;
 	end = start + pages * PAGE_SIZE;
-	
+
 	kdp_unmap_page_range(start, end);
 	flush_tlb_kernel_range(start, end);
 
@@ -834,7 +833,7 @@ void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
 		// has shadow object?
 		page = virt_to_page(dest);
 		if (page->kdp_shadow)
-			sdest = page->kdp_shadow + 
+			sdest = page->kdp_shadow +
 				((unsigned long)dest & (PAGE_SIZE - 1));
 	}
 
@@ -843,7 +842,7 @@ void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
 	}
 
 	if (unlikely(!kdp_enabled)) {
-		memset(dest + SZ_2G, c, count);
+		memset(sdest, c, count);
 		return;
 	}
 
@@ -877,7 +876,7 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t allo
 	struct page *page;
 	void *sdest = NULL;
 	const void *ssrc = src;
-	
+
 	if (likely((unsigned long)dest > PAGE_OFFSET &&
 	           (unsigned long)dest < KDP_STACK_START)) {
 		// has shadow object?
@@ -900,7 +899,7 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t allo
 	}
 
 	if (unlikely(!kdp_enabled)) {
-		memcpy(dest + SZ_2G, ssrc, count);
+		memcpy(sdest, ssrc, count);
 		return;
 	}
 
@@ -934,7 +933,7 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 	struct page *page;
 	void *sa = NULL;
 
-	if (likely((unsigned long)addr > SOBJ_START && 
+	if (likely((unsigned long)addr > SOBJ_START &&
 	           (unsigned long)addr < KDP_STACK_START)) {
 		page = virt_to_page((void *)addr - SZ_2G);
 		if (page->kdp_shadow)
@@ -969,8 +968,9 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 {
 	struct page *page;
 	void *sa = NULL;
+	static int count = 20;
 
-	if (likely((unsigned long)addr > SOBJ_START && 
+	if (likely((unsigned long)addr > SOBJ_START &&
 	           (unsigned long)addr < KDP_STACK_START)) {
 		page = virt_to_page((void *)addr - SZ_2G);
 		if (page->kdp_shadow)
@@ -1006,7 +1006,7 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 	struct page *page;
 	void *sa = NULL;
 
-	if (likely((unsigned long)addr > SOBJ_START && 
+	if (likely((unsigned long)addr > SOBJ_START &&
 	           (unsigned long)addr < KDP_STACK_START)) {
 		page = virt_to_page((void *)addr - SZ_2G);
 		if (page->kdp_shadow)
@@ -1042,7 +1042,7 @@ void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 	struct page *page;
 	void *sa = NULL;
 
-	if (likely((unsigned long)addr > SOBJ_START && 
+	if (likely((unsigned long)addr > SOBJ_START &&
 	           (unsigned long)addr < KDP_STACK_START)) {
 		page = virt_to_page((void *)addr - SZ_2G);
 		if (page->kdp_shadow)
