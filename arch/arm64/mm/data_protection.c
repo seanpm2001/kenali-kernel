@@ -11,12 +11,13 @@
 #include <asm/tlbflush.h>
 
 //#define SOBJ_START ((void*)_etext)
-#define SOBJ_START ((void*)_edata)
+//#define SOBJ_START ((void*)_edata)
 
-//#define DEBUG_SOBJ
+#define DEBUG_SOBJ
 
 int kdp_enabled __section(.rodata);
 
+#define SOBJ_START (PAGE_OFFSET + SZ_2G)
 #define KDP_STACK_START (PAGE_OFFSET + SZ_4G)
 
 struct kdp_stack_mapping {
@@ -707,10 +708,12 @@ try_again:
 	WARN_ON(nr != THREAD_SIZE/PAGE_SIZE);
 
 	/* mark page as inaccessible */
+#if 0
 	if (likely(kdp_enabled)) {
 		for (int i = 0; i < nr; i++)
 			_kdp_protect_one_page(page_addr + i * PAGE_SIZE, PAGE_NONE);
 	}
+#endif
 
 	return &kdp_stack_map[index];
 }
@@ -749,21 +752,98 @@ void *kdp_unmap_stack(void *addr)
 	return p_addr;
 }
 
-void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
+void kdp_alloc_shadow(struct page *page, int order, gfp_t flags, int node)
 {
-	void *sdest = NULL;
-	if (dest > SOBJ_START && (unsigned long)dest < KDP_STACK_START) {
-		// has shadow object?
-		sdest = dest + kdp_get_shadow_offset(alloc_size);
+	unsigned long start, end;
+	struct page *shadow;
+	void *address;
+	int pages;
+	int i, nr = 0;
+	int err;
+
+	pages = 1 << order;
+
+	shadow = alloc_pages_node(node, flags | __GFP_NOTRACK, order);
+	if (!shadow) {
+		pr_err("KDFI: failed to allocate shadow\n");
+		return;
 	}
 
-	if (unlikely(sdest == NULL)) {
-		//memset(dest, c, count);
+	/* map shadow */
+	start = (unsigned long)page_address(page) + SZ_2G;
+	end = start + pages * PAGE_SIZE;
+	
+	err = kdp_map_page_range(start, end, shadow, &nr);
+	if (unlikely(err)) {
+		pr_err("KDFI: failed to map shadow\n");
+		__free_pages(shadow, order);
+		return;
+	}
+
+
+	for (i = 0; i < pages; ++i) {
+		address = page_address(&shadow[i]);
+		page[i].kdp_shadow = address;
+#ifndef DEBUG_SOBJ
+		if (likely(kdp_enabled))
+			kdp_protect_one_page(address);
+		else
+			kdp_protect_init_page(address);
+#endif
+	}
+}
+
+void kdp_free_shadow(struct page *page, int order)
+{
+	unsigned long start, end;
+	struct page *shadow;
+	void *address;
+	int pages;
+	int i, nr = 0;
+	int err;
+
+	pages = 1 << order;
+
+	/* unmap shadow */
+	start = (unsigned long)page_address(page) + SZ_2G;
+	end = start + pages * PAGE_SIZE;
+	
+	kdp_unmap_page_range(start, end);
+	flush_tlb_kernel_range(start, end);
+
+	shadow = virt_to_page(page[0].kdp_shadow);
+
+	for (i = 0; i < pages; ++i) {
+		address = page_address(&shadow[i]);
+		page[i].kdp_shadow = NULL;
+#ifndef DEBUG_SOBJ
+		kdp_unprotect_one_page(address);
+#endif
+	}
+
+	__free_pages(shadow, order);
+}
+
+void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
+{
+	struct page *page;
+	void *sdest = NULL;
+
+	if (likely((unsigned long)dest > PAGE_OFFSET &&
+	           (unsigned long)dest < KDP_STACK_START)) {
+		// has shadow object?
+		page = virt_to_page(dest);
+		if (page->kdp_shadow)
+			sdest = page->kdp_shadow + 
+				((unsigned long)dest & (PAGE_SIZE - 1));
+	}
+
+	if (unlikely(!sdest)) {
 		return;
 	}
 
 	if (unlikely(!kdp_enabled)) {
-		memset(sdest, c, count);
+		memset(dest + SZ_2G, c, count);
 		return;
 	}
 
@@ -794,14 +874,24 @@ void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
 
 void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t alloc_size)
 {
+	struct page *page;
 	void *sdest = NULL;
-	if (dest > SOBJ_START && (unsigned long)dest < KDP_STACK_START) {
-		// has shadow object?
-		sdest = dest + kdp_get_shadow_offset(alloc_size);
-	}
 	const void *ssrc = src;
-	if (src > SOBJ_START && (unsigned long)src < KDP_STACK_START) {
-		ssrc += kdp_get_shadow_offset(alloc_size);
+	
+	if (likely((unsigned long)dest > PAGE_OFFSET &&
+	           (unsigned long)dest < KDP_STACK_START)) {
+		// has shadow object?
+		page = virt_to_page(dest);
+		if (page->kdp_shadow)
+			sdest = page->kdp_shadow +
+				((unsigned long)dest & (PAGE_SIZE - 1));
+	}
+
+	if (likely((unsigned long)src > PAGE_OFFSET &&
+	           (unsigned long)src < KDP_STACK_START)) {
+		page = virt_to_page(src);
+		if (page->kdp_shadow)
+			ssrc = src + SZ_2G;
 	}
 
 	if (unlikely(sdest == NULL)) {
@@ -810,7 +900,7 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t allo
 	}
 
 	if (unlikely(!kdp_enabled)) {
-		memcpy(sdest, ssrc, count);
+		memcpy(dest + SZ_2G, ssrc, count);
 		return;
 	}
 
@@ -841,14 +931,23 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t allo
 
 void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
-		     (unsigned long)addr > KDP_STACK_START ||
-		     !kdp_enabled)) {
+	struct page *page;
+	void *sa = NULL;
+
+	if (likely((unsigned long)addr > SOBJ_START && 
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr - SZ_2G);
+		if (page->kdp_shadow)
+			sa = page->kdp_shadow +
+				((unsigned long)addr & (PAGE_SIZE - 1));
+	}
+
+	if (unlikely(!sa || !kdp_enabled)) {
 		*addr = value;
 		return;
 	}
 
-	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+	sa = virt_to_shadow(sa);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
 	asm volatile(
@@ -862,20 +961,29 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 	"	msr	ttbr0_el1, x3\n"
 	"	isb	\n"
 	"	msr	daif, x2\n"
-	: : "r" (sa), "r" (value), "r" (pgd)
+	: : "r" ((unsigned long)sa), "r" (value), "r" (pgd)
 	: "x2", "x3", "memory");
 }
 
 void atomic32_write_shadow(unsigned *addr, unsigned value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
-		     (unsigned long)addr > KDP_STACK_START ||
-		     !kdp_enabled)) {
+	struct page *page;
+	void *sa = NULL;
+
+	if (likely((unsigned long)addr > SOBJ_START && 
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr - SZ_2G);
+		if (page->kdp_shadow)
+			sa = page->kdp_shadow +
+				((unsigned long)addr & (PAGE_SIZE - 1));
+	}
+
+	if (unlikely(!sa || !kdp_enabled)) {
 		*addr = value;
 		return;
 	}
 
-	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+	sa = virt_to_shadow(sa);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
 	asm volatile(
@@ -889,20 +997,29 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 	"	msr	ttbr0_el1, x3\n"
 	"	isb	\n"
 	"	msr	daif, x2\n"
-	: : "r" (sa), "r" (value), "r" (pgd)
+	: : "r" ((unsigned long)sa), "r" (value), "r" (pgd)
 	: "x2", "x3", "memory");
 }
 
 void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
-		     (unsigned long)addr > KDP_STACK_START ||
-		     !kdp_enabled)) {
+	struct page *page;
+	void *sa = NULL;
+
+	if (likely((unsigned long)addr > SOBJ_START && 
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr - SZ_2G);
+		if (page->kdp_shadow)
+			sa = page->kdp_shadow +
+				((unsigned long)addr & (PAGE_SIZE - 1));
+	}
+
+	if (unlikely(!sa || !kdp_enabled)) {
 		*addr = value;
 		return;
 	}
 
-	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+	sa = virt_to_shadow(sa);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
 	asm volatile(
@@ -916,20 +1033,29 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 	"	msr	ttbr0_el1, x3\n"
 	"	isb	\n"
 	"	msr	daif, x2\n"
-	: : "r" (sa), "r" (value), "r" (pgd)
+	: : "r" ((unsigned long)sa), "r" (value), "r" (pgd)
 	: "x2", "x3", "memory");
 }
 
 void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
-		     (unsigned long)addr > KDP_STACK_START ||
-		     !kdp_enabled)) {
+	struct page *page;
+	void *sa = NULL;
+
+	if (likely((unsigned long)addr > SOBJ_START && 
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr - SZ_2G);
+		if (page->kdp_shadow)
+			sa = page->kdp_shadow +
+				((unsigned long)addr & (PAGE_SIZE - 1));
+	}
+
+	if (unlikely(!sa || !kdp_enabled)) {
 		*addr = value;
 		return;
 	}
 
-	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+	sa = virt_to_shadow(sa);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
 	asm volatile(
@@ -943,6 +1069,6 @@ void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 	"	msr	ttbr0_el1, x3\n"
 	"	isb	\n"
 	"	msr	daif, x2\n"
-	: : "r" (sa), "r" (value), "r" (pgd)
+	: : "r" ((unsigned long)sa), "r" (value), "r" (pgd)
 	: "x2", "x3", "memory");
 }

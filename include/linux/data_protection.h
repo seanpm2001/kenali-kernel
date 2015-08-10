@@ -14,6 +14,8 @@ void kdp_protect_init_page(void* address);
 void *kdp_map_stack(struct page *page);
 void *kdp_unmap_stack(void *addr);
 struct page *kdp_get_stack_page(void *stack);
+void kdp_alloc_shadow(struct page *page, int order, gfp_t flags, int node);
+void kdp_free_shadow(struct page *page, int order);
 
 static inline size_t kdp_get_shadow_offset(size_t size) {
 	if (size <= 312)
