@@ -603,6 +603,10 @@ int cache_show(struct kmem_cache *s, struct seq_file *m)
 
 	memcg_accumulate_slabinfo(s, &sinfo);
 
+	if (s->flags & SLAB_SENSITIVE)
+		seq_printf(m, "*");
+	else
+		seq_printf(m, " ");
 	seq_printf(m, "%-17s %6lu %6lu %6u %4u %4d",
 		   cache_name(s), sinfo.active_objs, sinfo.num_objs, s->size,
 		   sinfo.objects_per_slab, (1 << sinfo.cache_order));
