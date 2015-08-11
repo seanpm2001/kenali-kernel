@@ -379,6 +379,7 @@ static void context_switch_test()
 		start, end, end - start);
 }
 
+void kdp_map_global_shadow();
 void kdp_enable(void)
 {
 	pgd_t* old_pg = cpu_get_pgd();
@@ -386,7 +387,7 @@ void kdp_enable(void)
 		old_pg, empty_zero_page);
 
 	//context_switch_test();
-
+	kdp_map_global_shadow();
 	protect_kernel();
 
 	/*
@@ -750,6 +751,50 @@ void *kdp_unmap_stack(void *addr)
 	}
 
 	return p_addr;
+}
+
+void kdp_map_global_shadow()
+{
+	unsigned long start, end, size;
+	struct page *page, *shadow;
+	void *address;
+	int order, pages;
+	int i, nr = 0;
+	int err;
+
+	start = (unsigned long)(_sdata);
+	end = PAGE_ALIGN((unsigned long)(_edata));
+	size = end - start;
+	pages = size >> PAGE_SHIFT;
+	size = __roundup_pow_of_two(size);
+	order = size >> PAGE_SHIFT - 1;
+
+	pr_info("KDFI: round up data section to %lx\n", size);
+
+	shadow = alloc_pages(GFP_KERNEL | __GFP_NOTRACK, order);
+	if (!shadow) {
+		pr_err("KDFI: failed to allocate shadow for global\n");
+		return;
+	}
+
+	/* map shadow */
+	err = kdp_map_page_range(start, start + size, shadow, &nr);
+	if (unlikely(err)) {
+		pr_err("KDFI: failed to map shadow\n");
+		__free_pages(shadow, order);
+		return;
+	}
+
+	for (i = 0; i < pages; ++i) {
+		address = page_address(&shadow[i]);
+		page[i].kdp_shadow = address;
+#ifndef DEBUG_SOBJ
+		if (likely(kdp_enabled))
+			kdp_protect_one_page(address);
+		else
+			kdp_protect_init_page(address);
+#endif
+	}
 }
 
 void kdp_alloc_shadow(struct page *page, int order, gfp_t flags, int node)
