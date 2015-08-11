@@ -978,6 +978,14 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 	struct page *page;
 	void *sa = NULL;
 
+#if 1
+	if (likely((unsigned long)addr > PAGE_OFFSET &&
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr);
+		if (page->kdp_shadow)
+			sa = addr;
+	}
+#else
 	if (likely((unsigned long)addr > SOBJ_START &&
 	           (unsigned long)addr < KDP_STACK_START)) {
 		page = virt_to_page((void *)addr - SZ_2G);
@@ -985,6 +993,7 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 			sa = page->kdp_shadow +
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
+#endif
 
 	if (unlikely(!sa || !kdp_enabled)) {
 		*addr = value;
@@ -1015,6 +1024,14 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 	void *sa = NULL;
 	static int count = 20;
 
+#if 1
+	if (likely((unsigned long)addr > PAGE_OFFSET &&
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr);
+		if (page->kdp_shadow)
+			sa = addr;
+	}
+#else
 	if (likely((unsigned long)addr > SOBJ_START &&
 	           (unsigned long)addr < KDP_STACK_START)) {
 		page = virt_to_page((void *)addr - SZ_2G);
@@ -1022,6 +1039,7 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 			sa = page->kdp_shadow +
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
+#endif
 
 	if (unlikely(!sa || !kdp_enabled)) {
 		*addr = value;
@@ -1051,6 +1069,14 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 	struct page *page;
 	void *sa = NULL;
 
+#if 1
+	if (likely((unsigned long)addr > PAGE_OFFSET &&
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr);
+		if (page->kdp_shadow)
+			sa = addr;
+	}
+#else
 	if (likely((unsigned long)addr > SOBJ_START &&
 	           (unsigned long)addr < KDP_STACK_START)) {
 		page = virt_to_page((void *)addr - SZ_2G);
@@ -1058,6 +1084,7 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 			sa = page->kdp_shadow +
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
+#endif
 
 	if (unlikely(!sa || !kdp_enabled)) {
 		*addr = value;
@@ -1087,6 +1114,14 @@ void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 	struct page *page;
 	void *sa = NULL;
 
+#if 1
+	if (likely((unsigned long)addr > PAGE_OFFSET &&
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr);
+		if (page->kdp_shadow)
+			sa = addr;
+	}
+#else
 	if (likely((unsigned long)addr > SOBJ_START &&
 	           (unsigned long)addr < KDP_STACK_START)) {
 		page = virt_to_page((void *)addr - SZ_2G);
@@ -1094,6 +1129,7 @@ void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 			sa = page->kdp_shadow +
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
+#endif
 
 	if (unlikely(!sa || !kdp_enabled)) {
 		*addr = value;
