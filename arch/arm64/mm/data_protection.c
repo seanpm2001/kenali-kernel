@@ -707,10 +707,12 @@ try_again:
 	WARN_ON(nr != THREAD_SIZE/PAGE_SIZE);
 
 	/* mark page as inaccessible */
+#if 0
 	if (likely(kdp_enabled)) {
 		for (int i = 0; i < nr; i++)
 			_kdp_protect_one_page(page_addr + i * PAGE_SIZE, PAGE_NONE);
 	}
+#endif
 
 	return &kdp_stack_map[index];
 }
