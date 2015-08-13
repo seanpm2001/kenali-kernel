@@ -788,6 +788,7 @@ void kdp_map_global_shadow()
 	for (i = 0; i < pages; ++i) {
 		address = page_address(&shadow[i]);
 		page[i].kdp_shadow = address;
+		memcpy(address, page_address(&page[i]), PAGE_SIZE);
 #ifndef DEBUG_SOBJ
 		if (likely(kdp_enabled))
 			kdp_protect_one_page(address);
@@ -978,6 +979,11 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 	struct page *page;
 	void *sa = NULL;
 
+	if (unlikely(!kdp_enabled)) {
+		*addr = value;
+		return;
+	}
+
 #if 1
 	if (likely((unsigned long)addr > PAGE_OFFSET &&
 	           (unsigned long)addr < KDP_STACK_START)) {
@@ -994,8 +1000,7 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
 #endif
-
-	if (unlikely(!sa || !kdp_enabled)) {
+	else {
 		*addr = value;
 		return;
 	}
@@ -1024,6 +1029,11 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 	void *sa = NULL;
 	static int count = 20;
 
+	if (unlikely(!kdp_enabled)) {
+		*addr = value;
+		return;
+	}
+
 #if 1
 	if (likely((unsigned long)addr > PAGE_OFFSET &&
 	           (unsigned long)addr < KDP_STACK_START)) {
@@ -1040,8 +1050,7 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
 #endif
-
-	if (unlikely(!sa || !kdp_enabled)) {
+	else {
 		*addr = value;
 		return;
 	}
@@ -1069,6 +1078,11 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 	struct page *page;
 	void *sa = NULL;
 
+	if (unlikely(!kdp_enabled)) {
+		*addr = value;
+		return;
+	}
+
 #if 1
 	if (likely((unsigned long)addr > PAGE_OFFSET &&
 	           (unsigned long)addr < KDP_STACK_START)) {
@@ -1085,8 +1099,7 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
 #endif
-
-	if (unlikely(!sa || !kdp_enabled)) {
+	else {
 		*addr = value;
 		return;
 	}
@@ -1114,6 +1127,11 @@ void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 	struct page *page;
 	void *sa = NULL;
 
+	if (unlikely(!kdp_enabled)) {
+		*addr = value;
+		return;
+	}
+
 #if 1
 	if (likely((unsigned long)addr > PAGE_OFFSET &&
 	           (unsigned long)addr < KDP_STACK_START)) {
@@ -1130,8 +1148,7 @@ void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
 #endif
-
-	if (unlikely(!sa || !kdp_enabled)) {
+	else {
 		*addr = value;
 		return;
 	}
