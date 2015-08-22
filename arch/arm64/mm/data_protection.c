@@ -766,10 +766,9 @@ void kdp_map_global_shadow()
 	end = PAGE_ALIGN((unsigned long)(_edata));
 	size = end - start;
 	pages = size >> PAGE_SHIFT;
-	size = __roundup_pow_of_two(size);
-	order = size >> PAGE_SHIFT - 1;
+	order = fls64(pages -1);
 
-	pr_info("KDFI: round up data section to %lx\n", size);
+	pr_info("KDFI: round up data section to 0x%lx, pages = %d, order = %d\n", size, pages, order);
 
 	shadow = alloc_pages(GFP_KERNEL | __GFP_NOTRACK, order);
 	if (!shadow) {
@@ -778,13 +777,14 @@ void kdp_map_global_shadow()
 	}
 
 	/* map shadow */
-	err = kdp_map_page_range(start, start + size, shadow, &nr);
+	err = kdp_map_page_range(start + SZ_2G, end + SZ_2G, shadow, &nr);
 	if (unlikely(err)) {
-		pr_err("KDFI: failed to map shadow\n");
+		pr_err("KDFI: failed to map global shadow\n");
 		__free_pages(shadow, order);
 		return;
 	}
 
+	page = virt_to_page(start);
 	for (i = 0; i < pages; ++i) {
 		address = page_address(&shadow[i]);
 		page[i].kdp_shadow = address;
@@ -821,7 +821,7 @@ void kdp_alloc_shadow(struct page *page, int order, gfp_t flags, int node)
 
 	err = kdp_map_page_range(start, end, shadow, &nr);
 	if (unlikely(err)) {
-		pr_err("KDFI: failed to map shadow\n");
+		pr_err("KDFI: failed to map shadow, start = %lx, pages = %d, nr = %d\n", start, pages, nr);
 		__free_pages(shadow, order);
 		return;
 	}
@@ -1000,7 +1000,7 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
 #endif
-	else {
+	if (unlikely(!sa)) {
 		*addr = value;
 		return;
 	}
@@ -1050,7 +1050,7 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
 #endif
-	else {
+	if (unlikely(!sa)) {
 		*addr = value;
 		return;
 	}
@@ -1099,7 +1099,7 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
 #endif
-	else {
+	if (unlikely(!sa)) {
 		*addr = value;
 		return;
 	}
@@ -1148,7 +1148,7 @@ void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 				((unsigned long)addr & (PAGE_SIZE - 1));
 	}
 #endif
-	else {
+	if (unlikely(!sa)) {
 		*addr = value;
 		return;
 	}
