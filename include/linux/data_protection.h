@@ -17,19 +17,8 @@ struct page *kdp_get_stack_page(void *stack);
 void kdp_alloc_shadow(struct page *page, int order, gfp_t flags, int node);
 void kdp_free_shadow(struct page *page, int order);
 
-static inline size_t kdp_get_shadow_offset(size_t size) {
-	if (size <= 312)
-		return SZ_4K;
-	else if (size <= 656)
-		return SZ_8K;
-	else if (size <= 1088)
-		return SZ_16K;
-	else
-		return SZ_32K;
-}
-
-void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size);
-void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t alloc_size);
+void atomic_memset_shadow(void *dest, int c, size_t count);
+void atomic_memcpy_shadow(void *dest, const void *src, size_t count);
 void atomic64_write_shadow(unsigned long *addr, unsigned long value);
 void atomic32_write_shadow(unsigned *addr, unsigned value);
 void atomic16_write_shadow(unsigned short *addr, unsigned short value);

@@ -1335,8 +1335,7 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	mod_zone_page_state(page_zone(page),
 		(s->flags & SLAB_RECLAIM_ACCOUNT) ?
 		NR_SLAB_RECLAIMABLE : NR_SLAB_UNRECLAIMABLE,
-		(flags & GFP_SENSITIVE) ?
-		1 << (oo_order(oo) + 1) : 1 << oo_order(oo));
+		1 << oo_order(oo));
 
 	return page;
 }
@@ -2410,7 +2409,7 @@ redo:
 		memset(object, 0, s->object_size);
 #ifdef CONFIG_DATA_PROTECTION
 	if (unlikely(gfpflags & GFP_SENSITIVE) && object)
-		atomic_memset_shadow(object, 0, s->object_size, s->object_size);
+		atomic_memset_shadow(object, 0, s->object_size);
 #endif
 
 
@@ -3603,7 +3602,7 @@ static struct kmem_cache * __init bootstrap(struct kmem_cache *static_cache)
 
 	memcpy(s, static_cache, kmem_cache->object_size);
 #ifdef CONFIG_DATA_PROTECTION
-	atomic_memcpy_shadow((unsigned char*)s + 4096, static_cache, kmem_cache->object_size, kmem_cache->object_size);
+	atomic_memcpy_shadow((unsigned char*)s, static_cache, kmem_cache->object_size);
 #endif
 
 	/*

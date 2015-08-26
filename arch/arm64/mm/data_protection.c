@@ -869,13 +869,13 @@ void kdp_free_shadow(struct page *page, int order)
 	__free_pages(shadow, order);
 }
 
-void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
+void atomic_memset_shadow(void *dest, int c, size_t count)
 {
 	struct page *page;
 	void *sdest = NULL;
 
 	if (likely((unsigned long)dest > PAGE_OFFSET &&
-	           (unsigned long)dest < KDP_STACK_START)) {
+	           (unsigned long)dest < SOBJ_START)) {
 		// has shadow object?
 		page = virt_to_page(dest);
 		if (page->kdp_shadow)
@@ -917,14 +917,14 @@ void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
 	:);
 }
 
-void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t alloc_size)
+void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
 {
 	struct page *page;
 	void *sdest = NULL;
 	const void *ssrc = src;
 
 	if (likely((unsigned long)dest > PAGE_OFFSET &&
-	           (unsigned long)dest < KDP_STACK_START)) {
+	           (unsigned long)dest < SOBJ_START)) {
 		// has shadow object?
 		page = virt_to_page(dest);
 		if (page->kdp_shadow)
@@ -932,16 +932,15 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t allo
 				((unsigned long)dest & (PAGE_SIZE - 1));
 	}
 
+	if (unlikely(sdest == NULL)) {
+		return;
+	}
+
 	if (likely((unsigned long)src > PAGE_OFFSET &&
-	           (unsigned long)src < KDP_STACK_START)) {
+	           (unsigned long)src < SOBJ_START)) {
 		page = virt_to_page(src);
 		if (page->kdp_shadow)
 			ssrc = src + SZ_2G;
-	}
-
-	if (unlikely(sdest == NULL)) {
-		//memcpy(dest, src, count);
-		return;
 	}
 
 	if (unlikely(!kdp_enabled)) {

@@ -35,7 +35,7 @@ char *kstrdup(const char *s, gfp_t gfp)
 		memcpy(buf, s, len);
 #ifdef CONFIG_DATA_PROTECTION
 		if (unlikely((gfp & GFP_SENSITIVE)))
-			atomic_memcpy_shadow(buf, s, len, len);
+			atomic_memcpy_shadow(buf, s, len);
 #endif
 	}
 	return buf;
@@ -64,7 +64,7 @@ char *kstrndup(const char *s, size_t max, gfp_t gfp)
 #ifdef CONFIG_DATA_PROTECTION
 		/* copy len+1 to include to tailing \0 */
 		if (unlikely((gfp & GFP_SENSITIVE)))
-			atomic_memcpy_shadow(buf, s, len+1, len+1);
+			atomic_memcpy_shadow(buf, s, len+1);
 #endif
 	}
 	return buf;
@@ -87,7 +87,7 @@ void *kmemdup(const void *src, size_t len, gfp_t gfp)
 		memcpy(p, src, len);
 #ifdef CONFIG_DATA_PROTECTION
 		if (unlikely((gfp & GFP_SENSITIVE)))
-			atomic_memcpy_shadow(p, src, len, len);
+			atomic_memcpy_shadow(p, src, len);
 #endif
 	}
 	return p;
@@ -141,7 +141,7 @@ static __always_inline void *__do_krealloc(const void *p, size_t new_size,
 		memcpy(ret, p, ks);
 #ifdef CONFIG_DATA_PROTECTION
 		if (unlikely((flags & GFP_SENSITIVE)))
-			atomic_memcpy_shadow(ret, p, ks, ks);
+			atomic_memcpy_shadow(ret, p, ks);
 #endif
 	}
 
