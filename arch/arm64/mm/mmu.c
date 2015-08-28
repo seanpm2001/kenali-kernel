@@ -408,6 +408,32 @@ void __iomem * __init early_io_map(phys_addr_t phys, unsigned long virt)
 }
 #endif
 
+#ifdef CONFIG_DATA_PROTECTION
+phys_addr_t kdp_global_shadow;
+static void __init create_global_shadow_mapping()
+{
+	unsigned long start, end, size;
+	int order, pages;
+	struct map_desc md;
+
+	start = (unsigned long)(_sdata);
+	end = PAGE_ALIGN((unsigned long)(__bss_stop));
+	size = end - start;
+	pages = size >> PAGE_SHIFT;
+	order = fls64(pages -1);
+
+	kdp_global_shadow = memblock_alloc(size, PAGE_SIZE);
+	
+	md.virtual = start + SZ_2G;
+	md.pfn = __phys_to_pfn(kdp_global_shadow);
+	md.length = size;
+	md.type = MT_MEMORY_KERNEL;
+
+	create_mapping(&md);
+	memcpy((void*)start + SZ_2G, (void*)start, size);
+}
+#endif
+
 static void __init map_mem(void)
 {
 	struct memblock_region *reg;
@@ -457,6 +483,10 @@ static void __init map_mem(void)
 
 		create_mapping(&md);
 	}
+
+#ifdef CONFIG_DATA_PROTECTION
+	create_global_shadow_mapping();
+#endif
 }
 
 /*

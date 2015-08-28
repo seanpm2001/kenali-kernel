@@ -753,37 +753,24 @@ void *kdp_unmap_stack(void *addr)
 	return p_addr;
 }
 
+extern phys_addr_t kdp_global_shadow;
 void kdp_map_global_shadow()
 {
 	unsigned long start, end, size;
 	struct page *page, *shadow;
 	void *address;
 	int order, pages;
-	int i, nr = 0;
-	int err;
+	int i;
 
 	start = (unsigned long)(_sdata);
-	end = PAGE_ALIGN((unsigned long)(_edata));
+	end = PAGE_ALIGN((unsigned long)(__bss_stop));
 	size = end - start;
 	pages = size >> PAGE_SHIFT;
 	order = fls64(pages -1);
 
 	pr_info("KDFI: round up data section to 0x%lx, pages = %d, order = %d\n", size, pages, order);
 
-	shadow = alloc_pages(GFP_KERNEL | __GFP_NOTRACK, order);
-	if (!shadow) {
-		pr_err("KDFI: failed to allocate shadow for global\n");
-		return;
-	}
-
-	/* map shadow */
-	err = kdp_map_page_range(start + SZ_2G, end + SZ_2G, shadow, &nr);
-	if (unlikely(err)) {
-		pr_err("KDFI: failed to map global shadow\n");
-		__free_pages(shadow, order);
-		return;
-	}
-
+	shadow = pfn_to_page(kdp_global_shadow >> PAGE_SHIFT);
 	page = virt_to_page(start);
 	for (i = 0; i < pages; ++i) {
 		address = page_address(&shadow[i]);
