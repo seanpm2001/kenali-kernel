@@ -623,6 +623,7 @@ static int kdp_map_page_range(unsigned long start, unsigned long end,
 	return 0;
 }
 
+#ifdef CONFIG_KDP_STACK_RAND
 void *kdp_get_real_stack(void *stack)
 {
 	if (likely(stack >= KDP_STACK_MAP_START &&
@@ -657,35 +658,40 @@ static int kdp_set_real_stack(void *real_stack, void *rand_stack)
 	WARN_ON(i == KDP_STACK_MAP_SIZE);
 	return i;
 }
+#endif
 
 void *kdp_map_stack(struct page *page)
 {
 	unsigned long start, addr, end, range, random;
 	void *page_addr;
-	int nr = 0;
+	int nr;
 	int err;
 
 	if (unlikely(!page))
 		return NULL;
 
+	page_addr = page_address(page);
+
+#ifdef CONFIG_KDP_STACK_RAND
 	/* FIXME should be the end of physical memory
 	 * currently use 4G, as most devices have less than 4G memory */
 	start = KDP_STACK_START;
-	range = 0xffffffffffffffffULL - start - THREAD_SIZE;
+	range = 0xffffffffffffffffULL - start - THREAD_SIZE - SZ_2G;
 
 try_again:
 	/* FIXME should use tree like structure to maintain mapped
 	 * addresses, currently uses a re-try based approach,
 	 * assuming randomized stack are unlikely to overlap */
 	get_random_bytes(&random, sizeof(random));
-	addr = ALIGN(random % (range + 1) + start, PAGE_SIZE << THREAD_SIZE_ORDER);
+	addr = ALIGN(random % (range + 1) + start, THREAD_SIZE);
 	end = addr + THREAD_SIZE;
 	/* in case overflows due to alignment */
-	while (addr >= end) {
-		addr -= PAGE_SIZE << THREAD_SIZE_ORDER;
+	while (addr >= end + SZ_2G) {
+		addr -= THREAD_SIZE_ORDER;
 		end = addr + THREAD_SIZE;
 	}
 
+	nr = 0;
 	err = kdp_map_page_range(addr, end, page, &nr);
 	if (unlikely(err)) {
 		if (nr > 0) {
@@ -699,24 +705,43 @@ try_again:
 
 		return NULL;
 	}
+	flush_tlb_kernel_range(addr, end);
 
-	page_addr = page_address(page);
 	int index = kdp_set_real_stack(page_addr, (void *)addr);
 	//pr_info("KDFI: map stack at %lx, slot = %d, slot addr = %p\n",
 	//		addr, index, &kdp_stack_map[index]);
-	flush_tlb_kernel_range(addr, end);
-
-	WARN_ON(nr != THREAD_SIZE/PAGE_SIZE);
 
 	/* mark page as inaccessible */
-#if 0
 	if (likely(kdp_enabled)) {
 		for (int i = 0; i < nr; i++)
 			_kdp_protect_one_page(page_addr + i * PAGE_SIZE, PAGE_NONE);
 	}
-#endif
 
+#else
+	addr = page_addr;
+	end = addr + THREAD_SIZE;
+#endif /* CONFIG_KDP_STACK_RAND */
+
+	nr = 0;
+	err = kdp_map_page_range(addr + SZ_2G, end + SZ_2G, page, &nr);
+	if (unlikely(err)) {
+		if (nr > 0) {
+			end = addr + PAGE_SIZE * nr;
+			kdp_unmap_page_range(addr + SZ_2G, end + SZ_2G);
+		}
+
+		/* overlapping */
+		BUG_ON(err == -EBUSY);
+
+		return NULL;
+	}
+	flush_tlb_kernel_range(addr + SZ_2G, end + SZ_2G);
+
+#ifdef CONFIG_KDP_STACK_RAND
 	return &kdp_stack_map[index];
+#else
+	return page_addr;
+#endif
 }
 
 void *kdp_unmap_stack(void *addr)
@@ -725,6 +750,7 @@ void *kdp_unmap_stack(void *addr)
 	struct kdp_stack_mapping *map;
 	void *p_addr;
 
+#ifdef CONFIG_KDP_STACK_RAND
 	spin_lock(&kdp_stack_map_lock);
 	if (likely(addr >= KDP_STACK_MAP_START &&
 		   addr <= KDP_STACK_MAP_END)) {
@@ -749,6 +775,14 @@ void *kdp_unmap_stack(void *addr)
 			kdp_unprotect_one_page(addr);
 		} while (addr += PAGE_SIZE, (unsigned long)addr != end);
 	}
+#else
+	start = (unsigned long)addr;
+	end = start + THREAD_SIZE;
+	p_addr = addr;
+#endif
+
+	kdp_unmap_page_range(start + SZ_2G, end + SZ_2G);
+	flush_tlb_kernel_range(start + SZ_2G, end + SZ_2G);
 
 	return p_addr;
 }
