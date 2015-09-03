@@ -1004,9 +1004,9 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 		return;
 	}
 
-#if 1
+#if 0
 	if (likely((unsigned long)addr > PAGE_OFFSET &&
-	           (unsigned long)addr < KDP_STACK_START)) {
+	           (unsigned long)addr < KDP_SOBJ_START)) {
 		page = virt_to_page((void *)addr);
 		if (page->kdp_shadow)
 			sa = addr;
@@ -1054,9 +1054,9 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 		return;
 	}
 
-#if 1
+#if 0
 	if (likely((unsigned long)addr > PAGE_OFFSET &&
-	           (unsigned long)addr < KDP_STACK_START)) {
+	           (unsigned long)addr < KDP_SOBJ_START)) {
 		page = virt_to_page((void *)addr);
 		if (page->kdp_shadow)
 			sa = addr;
@@ -1103,9 +1103,9 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 		return;
 	}
 
-#if 1
+#if 0
 	if (likely((unsigned long)addr > PAGE_OFFSET &&
-	           (unsigned long)addr < KDP_STACK_START)) {
+	           (unsigned long)addr < KDP_SOBJ_START)) {
 		page = virt_to_page((void *)addr);
 		if (page->kdp_shadow)
 			sa = addr;
@@ -1152,9 +1152,9 @@ void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 		return;
 	}
 
-#if 1
+#if 0
 	if (likely((unsigned long)addr > PAGE_OFFSET &&
-	           (unsigned long)addr < KDP_STACK_START)) {
+	           (unsigned long)addr < KDP_SOBJ_START)) {
 		page = virt_to_page((void *)addr);
 		if (page->kdp_shadow)
 			sa = addr;
