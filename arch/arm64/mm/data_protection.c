@@ -11,12 +11,13 @@
 #include <asm/tlbflush.h>
 
 //#define SOBJ_START ((void*)_etext)
-#define SOBJ_START ((void*)_edata)
+//#define SOBJ_START ((void*)_edata)
 
-//#define DEBUG_SOBJ
+#define DEBUG_SOBJ
 
 int kdp_enabled __section(.rodata);
 
+#define SOBJ_START (PAGE_OFFSET + SZ_2G)
 #define KDP_STACK_START (PAGE_OFFSET + SZ_4G)
 
 struct kdp_stack_mapping {
@@ -378,6 +379,7 @@ static void context_switch_test()
 		start, end, end - start);
 }
 
+void kdp_map_global_shadow();
 void kdp_enable(void)
 {
 	pgd_t* old_pg = cpu_get_pgd();
@@ -385,7 +387,7 @@ void kdp_enable(void)
 		old_pg, empty_zero_page);
 
 	//context_switch_test();
-
+	kdp_map_global_shadow();
 	protect_kernel();
 
 	/*
@@ -621,6 +623,7 @@ static int kdp_map_page_range(unsigned long start, unsigned long end,
 	return 0;
 }
 
+#ifdef CONFIG_KDP_STACK_RAND
 void *kdp_get_real_stack(void *stack)
 {
 	if (likely(stack >= KDP_STACK_MAP_START &&
@@ -655,35 +658,40 @@ static int kdp_set_real_stack(void *real_stack, void *rand_stack)
 	WARN_ON(i == KDP_STACK_MAP_SIZE);
 	return i;
 }
+#endif
 
 void *kdp_map_stack(struct page *page)
 {
 	unsigned long start, addr, end, range, random;
 	void *page_addr;
-	int nr = 0;
+	int nr;
 	int err;
 
 	if (unlikely(!page))
 		return NULL;
 
+	page_addr = page_address(page);
+
+#ifdef CONFIG_KDP_STACK_RAND
 	/* FIXME should be the end of physical memory
 	 * currently use 4G, as most devices have less than 4G memory */
 	start = KDP_STACK_START;
-	range = 0xffffffffffffffffULL - start - THREAD_SIZE;
+	range = 0xffffffffffffffffULL - start - THREAD_SIZE - SZ_2G;
 
 try_again:
 	/* FIXME should use tree like structure to maintain mapped
 	 * addresses, currently uses a re-try based approach,
 	 * assuming randomized stack are unlikely to overlap */
 	get_random_bytes(&random, sizeof(random));
-	addr = ALIGN(random % (range + 1) + start, PAGE_SIZE << THREAD_SIZE_ORDER);
+	addr = ALIGN(random % (range + 1) + start, THREAD_SIZE);
 	end = addr + THREAD_SIZE;
 	/* in case overflows due to alignment */
-	while (addr >= end) {
-		addr -= PAGE_SIZE << THREAD_SIZE_ORDER;
+	while (addr >= end + SZ_2G) {
+		addr -= THREAD_SIZE_ORDER;
 		end = addr + THREAD_SIZE;
 	}
 
+	nr = 0;
 	err = kdp_map_page_range(addr, end, page, &nr);
 	if (unlikely(err)) {
 		if (nr > 0) {
@@ -697,14 +705,11 @@ try_again:
 
 		return NULL;
 	}
+	flush_tlb_kernel_range(addr, end);
 
-	page_addr = page_address(page);
 	int index = kdp_set_real_stack(page_addr, (void *)addr);
 	//pr_info("KDFI: map stack at %lx, slot = %d, slot addr = %p\n",
 	//		addr, index, &kdp_stack_map[index]);
-	flush_tlb_kernel_range(addr, end);
-
-	WARN_ON(nr != THREAD_SIZE/PAGE_SIZE);
 
 	/* mark page as inaccessible */
 #if 0
@@ -714,7 +719,31 @@ try_again:
 	}
 #endif
 
+#else
+	addr = page_addr;
+	end = addr + THREAD_SIZE;
+#endif /* CONFIG_KDP_STACK_RAND */
+
+	nr = 0;
+	err = kdp_map_page_range(addr + SZ_2G, end + SZ_2G, page, &nr);
+	if (unlikely(err)) {
+		if (nr > 0) {
+			end = addr + PAGE_SIZE * nr;
+			kdp_unmap_page_range(addr + SZ_2G, end + SZ_2G);
+		}
+
+		/* overlapping */
+		BUG_ON(err == -EBUSY);
+
+		return NULL;
+	}
+	flush_tlb_kernel_range(addr + SZ_2G, end + SZ_2G);
+
+#ifdef CONFIG_KDP_STACK_RAND
 	return &kdp_stack_map[index];
+#else
+	return page_addr;
+#endif
 }
 
 void *kdp_unmap_stack(void *addr)
@@ -723,6 +752,7 @@ void *kdp_unmap_stack(void *addr)
 	struct kdp_stack_mapping *map;
 	void *p_addr;
 
+#ifdef CONFIG_KDP_STACK_RAND
 	spin_lock(&kdp_stack_map_lock);
 	if (likely(addr >= KDP_STACK_MAP_START &&
 		   addr <= KDP_STACK_MAP_END)) {
@@ -747,20 +777,136 @@ void *kdp_unmap_stack(void *addr)
 			kdp_unprotect_one_page(addr);
 		} while (addr += PAGE_SIZE, (unsigned long)addr != end);
 	}
+#else
+	start = (unsigned long)addr;
+	end = start + THREAD_SIZE;
+	p_addr = addr;
+#endif
+
+	kdp_unmap_page_range(start + SZ_2G, end + SZ_2G);
+	flush_tlb_kernel_range(start + SZ_2G, end + SZ_2G);
 
 	return p_addr;
 }
 
-void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
+extern phys_addr_t kdp_global_shadow;
+void kdp_map_global_shadow()
 {
-	void *sdest = NULL;
-	if (dest > SOBJ_START && (unsigned long)dest < KDP_STACK_START) {
-		// has shadow object?
-		sdest = dest + kdp_get_shadow_offset(alloc_size);
+	unsigned long start, end, size;
+	struct page *page, *shadow;
+	void *address;
+	int order, pages;
+	int i;
+
+	start = (unsigned long)(_sdata);
+	end = PAGE_ALIGN((unsigned long)(__bss_stop));
+	size = end - start;
+	pages = size >> PAGE_SHIFT;
+	order = fls64(pages -1);
+
+	pr_info("KDFI: round up data section to 0x%lx, pages = %d, order = %d\n", size, pages, order);
+
+	shadow = pfn_to_page(kdp_global_shadow >> PAGE_SHIFT);
+	page = virt_to_page(start);
+	for (i = 0; i < pages; ++i) {
+		address = page_address(&shadow[i]);
+		page[i].kdp_shadow = address;
+		memcpy(address, page_address(&page[i]), PAGE_SIZE);
+#ifndef DEBUG_SOBJ
+		if (likely(kdp_enabled))
+			kdp_protect_one_page(address);
+		else
+			kdp_protect_init_page(address);
+#endif
+	}
+}
+
+void kdp_alloc_shadow(struct page *page, int order, gfp_t flags, int node)
+{
+	unsigned long start, end;
+	struct page *shadow;
+	void *address;
+	int pages;
+	int i, nr = 0;
+	int err;
+
+	pages = 1 << order;
+
+	shadow = alloc_pages_node(node, flags | __GFP_NOTRACK, order);
+	if (!shadow) {
+		pr_err("KDFI: failed to allocate shadow\n");
+		return;
 	}
 
-	if (unlikely(sdest == NULL)) {
-		//memset(dest, c, count);
+	/* map shadow */
+	start = (unsigned long)page_address(page) + SZ_2G;
+	end = start + pages * PAGE_SIZE;
+
+	err = kdp_map_page_range(start, end, shadow, &nr);
+	if (unlikely(err)) {
+		pr_err("KDFI: failed to map shadow, start = %lx, pages = %d, nr = %d\n", start, pages, nr);
+		__free_pages(shadow, order);
+		return;
+	}
+
+	for (i = 0; i < pages; ++i) {
+		address = page_address(&shadow[i]);
+		page[i].kdp_shadow = address;
+#ifndef DEBUG_SOBJ
+		if (likely(kdp_enabled))
+			kdp_protect_one_page(address);
+		else
+			kdp_protect_init_page(address);
+#endif
+	}
+}
+
+void kdp_free_shadow(struct page *page, int order)
+{
+	unsigned long start, end;
+	struct page *shadow;
+	void *address;
+	int pages;
+	int i, nr = 0;
+	int err;
+
+	pages = 1 << order;
+
+	/* unmap shadow */
+	start = (unsigned long)page_address(page) + SZ_2G;
+	end = start + pages * PAGE_SIZE;
+
+	kdp_unmap_page_range(start, end);
+	flush_tlb_kernel_range(start, end);
+
+	shadow = virt_to_page(page[0].kdp_shadow);
+
+	for (i = 0; i < pages; ++i) {
+		address = page_address(&shadow[i]);
+		page[i].kdp_shadow = NULL;
+#ifndef DEBUG_SOBJ
+		kdp_unprotect_one_page(address);
+#endif
+	}
+
+	__free_pages(shadow, order);
+}
+
+void atomic_memset_shadow(void *dest, int c, size_t count)
+{
+	struct page *page;
+	void *sdest = NULL;
+
+	if (likely((unsigned long)dest > PAGE_OFFSET &&
+	           (unsigned long)dest < SOBJ_START)) {
+		// has shadow object?
+		page = virt_to_page(dest);
+		if (page->kdp_shadow)
+			sdest = page->kdp_shadow +
+				((unsigned long)dest & (PAGE_SIZE - 1));
+	}
+
+	if (unlikely(!sdest)) {
 		return;
 	}
 
@@ -794,21 +940,30 @@ void atomic_memset_shadow(void *dest, int c, size_t count, size_t alloc_size)
 	:);
 }
 
-void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t alloc_size)
+void atomic_memcpy_shadow(void *dest, const void *src, size_t count)
 {
+	struct page *page;
 	void *sdest = NULL;
-	if (dest > SOBJ_START && (unsigned long)dest < KDP_STACK_START) {
-		// has shadow object?
-		sdest = dest + kdp_get_shadow_offset(alloc_size);
-	}
 	const void *ssrc = src;
-	if (src > SOBJ_START && (unsigned long)src < KDP_STACK_START) {
-		ssrc += kdp_get_shadow_offset(alloc_size);
+
+	if (likely((unsigned long)dest > PAGE_OFFSET &&
+	           (unsigned long)dest < SOBJ_START)) {
+		// has shadow object?
+		page = virt_to_page(dest);
+		if (page->kdp_shadow)
+			sdest = page->kdp_shadow +
+				((unsigned long)dest & (PAGE_SIZE - 1));
 	}
 
 	if (unlikely(sdest == NULL)) {
-		//memcpy(dest, src, count);
 		return;
+	}
+
+	if (likely((unsigned long)src > PAGE_OFFSET &&
+	           (unsigned long)src < SOBJ_START)) {
+		page = virt_to_page(src);
+		if (page->kdp_shadow)
+			ssrc = src + SZ_2G;
 	}
 
 	if (unlikely(!kdp_enabled)) {
@@ -843,14 +998,36 @@ void atomic_memcpy_shadow(void *dest, const void *src, size_t count, size_t allo
 
 void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
-		     (unsigned long)addr > KDP_STACK_START ||
-		     !kdp_enabled)) {
+	struct page *page;
+	void *sa = NULL;
+
+	if (unlikely(!kdp_enabled)) {
 		*addr = value;
 		return;
 	}
 
-	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+#if 0
+	if (likely((unsigned long)addr > PAGE_OFFSET &&
+	           (unsigned long)addr < KDP_SOBJ_START)) {
+		page = virt_to_page((void *)addr);
+		if (page->kdp_shadow)
+			sa = addr;
+	}
+#else
+	if (likely((unsigned long)addr > SOBJ_START &&
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr - SZ_2G);
+		if (page->kdp_shadow)
+			sa = page->kdp_shadow +
+				((unsigned long)addr & (PAGE_SIZE - 1));
+	}
+#endif
+	if (unlikely(!sa)) {
+		*addr = value;
+		return;
+	}
+
+	sa = virt_to_shadow(sa);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
 	asm volatile(
@@ -864,20 +1041,43 @@ void atomic64_write_shadow(unsigned long *addr, unsigned long value)
 	"	msr	ttbr0_el1, x3\n"
 	"	isb	\n"
 	"	msr	daif, x2\n"
-	: : "r" (sa), "r" (value), "r" (pgd)
+	: : "r" ((unsigned long)sa), "r" (value), "r" (pgd)
 	: "x2", "x3", "memory");
 }
 
 void atomic32_write_shadow(unsigned *addr, unsigned value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
-		     (unsigned long)addr > KDP_STACK_START ||
-		     !kdp_enabled)) {
+	struct page *page;
+	void *sa = NULL;
+	static int count = 20;
+
+	if (unlikely(!kdp_enabled)) {
 		*addr = value;
 		return;
 	}
 
-	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+#if 0
+	if (likely((unsigned long)addr > PAGE_OFFSET &&
+	           (unsigned long)addr < KDP_SOBJ_START)) {
+		page = virt_to_page((void *)addr);
+		if (page->kdp_shadow)
+			sa = addr;
+	}
+#else
+	if (likely((unsigned long)addr > SOBJ_START &&
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr - SZ_2G);
+		if (page->kdp_shadow)
+			sa = page->kdp_shadow +
+				((unsigned long)addr & (PAGE_SIZE - 1));
+	}
+#endif
+	if (unlikely(!sa)) {
+		*addr = value;
+		return;
+	}
+
+	sa = virt_to_shadow(sa);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
 	asm volatile(
@@ -891,20 +1091,42 @@ void atomic32_write_shadow(unsigned *addr, unsigned value)
 	"	msr	ttbr0_el1, x3\n"
 	"	isb	\n"
 	"	msr	daif, x2\n"
-	: : "r" (sa), "r" (value), "r" (pgd)
+	: : "r" ((unsigned long)sa), "r" (value), "r" (pgd)
 	: "x2", "x3", "memory");
 }
 
 void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
-		     (unsigned long)addr > KDP_STACK_START ||
-		     !kdp_enabled)) {
+	struct page *page;
+	void *sa = NULL;
+
+	if (unlikely(!kdp_enabled)) {
 		*addr = value;
 		return;
 	}
 
-	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+#if 0
+	if (likely((unsigned long)addr > PAGE_OFFSET &&
+	           (unsigned long)addr < KDP_SOBJ_START)) {
+		page = virt_to_page((void *)addr);
+		if (page->kdp_shadow)
+			sa = addr;
+	}
+#else
+	if (likely((unsigned long)addr > SOBJ_START &&
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr - SZ_2G);
+		if (page->kdp_shadow)
+			sa = page->kdp_shadow +
+				((unsigned long)addr & (PAGE_SIZE - 1));
+	}
+#endif
+	if (unlikely(!sa)) {
+		*addr = value;
+		return;
+	}
+
+	sa = virt_to_shadow(sa);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
 	asm volatile(
@@ -918,20 +1140,42 @@ void atomic16_write_shadow(unsigned short *addr, unsigned short value)
 	"	msr	ttbr0_el1, x3\n"
 	"	isb	\n"
 	"	msr	daif, x2\n"
-	: : "r" (sa), "r" (value), "r" (pgd)
+	: : "r" ((unsigned long)sa), "r" (value), "r" (pgd)
 	: "x2", "x3", "memory");
 }
 
 void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 {
-	if (unlikely((unsigned long)addr < PAGE_OFFSET ||
-		     (unsigned long)addr > KDP_STACK_START ||
-		     !kdp_enabled)) {
+	struct page *page;
+	void *sa = NULL;
+
+	if (unlikely(!kdp_enabled)) {
 		*addr = value;
 		return;
 	}
 
-	unsigned long sa = (unsigned long)virt_to_shadow(addr);
+#if 0
+	if (likely((unsigned long)addr > PAGE_OFFSET &&
+	           (unsigned long)addr < KDP_SOBJ_START)) {
+		page = virt_to_page((void *)addr);
+		if (page->kdp_shadow)
+			sa = addr;
+	}
+#else
+	if (likely((unsigned long)addr > SOBJ_START &&
+	           (unsigned long)addr < KDP_STACK_START)) {
+		page = virt_to_page((void *)addr - SZ_2G);
+		if (page->kdp_shadow)
+			sa = page->kdp_shadow +
+				((unsigned long)addr & (PAGE_SIZE - 1));
+	}
+#endif
+	if (unlikely(!sa)) {
+		*addr = value;
+		return;
+	}
+
+	sa = virt_to_shadow(sa);
 	unsigned long pgd = virt_to_phys(shadow_pg_dir);
 	unsigned long flags;
 	asm volatile(
@@ -945,6 +1189,6 @@ void atomic8_write_shadow(unsigned char *addr, unsigned char value)
 	"	msr	ttbr0_el1, x3\n"
 	"	isb	\n"
 	"	msr	daif, x2\n"
-	: : "r" (sa), "r" (value), "r" (pgd)
+	: : "r" ((unsigned long)sa), "r" (value), "r" (pgd)
 	: "x2", "x3", "memory");
 }

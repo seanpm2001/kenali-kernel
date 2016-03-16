@@ -2348,15 +2348,14 @@ static inline void threadgroup_unlock(struct task_struct *tsk) {}
 
 #ifndef __HAVE_THREAD_FUNCTIONS
 
-#ifdef CONFIG_DATA_PROTECTION
+#ifdef CONFIG_KDP_STACK_RAND
 extern void *kdp_get_real_stack(void *stack);
 extern struct page *kdp_get_stack_page(void *stack);
 
 static inline struct thread_info *task_thread_info(const struct task_struct *tsk)
 {
-	return kdp_get_real_stack(tsk->stack);
+	return (struct thread_info *)kdp_get_real_stack(tsk->stack);
 }
-
 static inline void *task_stack_page(const struct task_struct *tsk)
 {
 	return kdp_get_stack_page(tsk->stack);

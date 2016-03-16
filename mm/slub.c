@@ -1265,17 +1265,6 @@ static inline struct page *alloc_slab_page(gfp_t flags, int node,
 
 	flags |= __GFP_NOTRACK;
 
-	/*
-	 * For sensitive SLUB, we increase the order by 1
-	 * so every other page would be the shadow page for the
-	 * immediate preceeding page.
-	 */
-	if (unlikely((flags & GFP_SENSITIVE))) {
-		//BUG_ON(order != 0);
-		flags |= __GFP_COMP;
-		order += 1;
-	}
-
 	if (node == NUMA_NO_NODE)
 		return alloc_pages(flags, order);
 	else
@@ -1300,11 +1289,6 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	 * so we fall-back to the minimum order allocation.
 	 */
 	alloc_gfp = (flags | __GFP_NOWARN | __GFP_NORETRY) & ~__GFP_NOFAIL;
-
-	/*
-	if (unlikely((alloc_gfp & GFP_SENSITIVE)))
-		printk(KERN_INFO "KDFI: allocate sensitive slub for %s, order = %d\n", s->name, oo_order(oo));
-	*/
 
 	page = alloc_slab_page(alloc_gfp, node, oo);
 	if (unlikely(!page)) {
@@ -1339,7 +1323,7 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 		/*
 		 * Set up the shadow page
 		 */
-		kdp_protect_page(page);
+		kdp_alloc_shadow(page, oo_order(oo), flags, node);
 	}
 
 	if (flags & __GFP_WAIT)
@@ -1351,8 +1335,7 @@ static struct page *allocate_slab(struct kmem_cache *s, gfp_t flags, int node)
 	mod_zone_page_state(page_zone(page),
 		(s->flags & SLAB_RECLAIM_ACCOUNT) ?
 		NR_SLAB_RECLAIMABLE : NR_SLAB_UNRECLAIMABLE,
-		(flags & GFP_SENSITIVE) ?
-		1 << (oo_order(oo) + 1) : 1 << oo_order(oo));
+		1 << oo_order(oo));
 
 	return page;
 }
@@ -1430,6 +1413,10 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 
 	kmemcheck_free_shadow(page, compound_order(page));
 
+	if (unlikely(s->flags & SLAB_SENSITIVE)) {
+		kdp_free_shadow(page, compound_order(page));
+	}
+
 	mod_zone_page_state(page_zone(page),
 		(s->flags & SLAB_RECLAIM_ACCOUNT) ?
 		NR_SLAB_RECLAIMABLE : NR_SLAB_UNRECLAIMABLE,
@@ -1437,10 +1424,6 @@ static void __free_slab(struct kmem_cache *s, struct page *page)
 
 	__ClearPageSlabPfmemalloc(page);
 	__ClearPageSlab(page);
-
-	if (unlikely(s->flags & SLAB_SENSITIVE)) {
-		kdp_unprotect_page(page);
-	}
 
 	memcg_release_pages(s, order);
 	page_mapcount_reset(page);
@@ -2422,13 +2405,13 @@ redo:
 		stat(s, ALLOC_FASTPATH);
 	}
 
-	if (unlikely(gfpflags & __GFP_ZERO) && object) {
+	if (unlikely(gfpflags & __GFP_ZERO) && object)
 		memset(object, 0, s->object_size);
 #ifdef CONFIG_DATA_PROTECTION
-		if (unlikely(gfpflags & GFP_SENSITIVE))
-			atomic_memset_shadow(object, 0, s->object_size, s->object_size);
+	if (unlikely(gfpflags & GFP_SENSITIVE) && object)
+		atomic_memset_shadow(object, 0, s->object_size);
 #endif
-	}
+
 
 	slab_post_alloc_hook(s, gfpflags, object);
 
@@ -3393,7 +3376,7 @@ void kfree(const void *x)
 	if (unlikely(!PageSlab(page))) {
 		BUG_ON(!PageCompound(page));
 		kmemleak_free(x);
-#ifdef CONFIG_DATA_PROTECTION
+#if 0//def CONFIG_DATA_PROTECTION
 		kdp_unprotect_page(page);
 #endif
 		__free_memcg_kmem_pages(page, compound_order(page));
@@ -3619,7 +3602,7 @@ static struct kmem_cache * __init bootstrap(struct kmem_cache *static_cache)
 
 	memcpy(s, static_cache, kmem_cache->object_size);
 #ifdef CONFIG_DATA_PROTECTION
-	atomic_memcpy_shadow((unsigned char*)s + 4096, static_cache, kmem_cache->object_size, kmem_cache->object_size);
+	atomic_memcpy_shadow((unsigned char*)s, static_cache, kmem_cache->object_size);
 #endif
 
 	/*
