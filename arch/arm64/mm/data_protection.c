@@ -88,7 +88,7 @@ int __init kdp_init(void)
 			if (pud_none(*pud)) {
 				pmd = next_reserved_pmd;
 				pr_info("KDFI: alloc reserved pmd = 0x%016llx\n", __pa(pmd));
-				set_pud(pud, __pud(__pa(pmd) | PMD_TYPE_TABLE));
+				set_pud(pud, __pud(__pa(pmd) | PMD_TYPE_TABLE | PMD_TABLE_KERNEL));
 				next_reserved_pmd += PTRS_PER_PMD;
 			}
 
@@ -712,12 +712,10 @@ try_again:
 	//		addr, index, &kdp_stack_map[index]);
 
 	/* mark page as inaccessible */
-#if 0
 	if (likely(kdp_enabled)) {
 		for (int i = 0; i < nr; i++)
 			_kdp_protect_one_page(page_addr + i * PAGE_SIZE, PAGE_NONE);
 	}
-#endif
 
 #else
 	addr = page_addr;

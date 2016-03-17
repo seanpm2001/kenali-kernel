@@ -3951,8 +3951,10 @@ int __pmd_alloc(struct mm_struct *mm, pud_t *pud, unsigned long address)
 #ifndef __ARCH_HAS_4LEVEL_HACK
 	if (pud_present(*pud))		/* Another has populated it */
 		pmd_free(mm, new);
-	else
+	else if (likely(address < PAGE_OFFSET))
 		pud_populate(mm, pud, new);
+	else
+		pud_populate_kernel(mm, pud, new);
 #else
 	if (pgd_present(*pud))		/* Another has populated it */
 		pmd_free(mm, new);

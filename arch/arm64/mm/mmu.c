@@ -189,7 +189,7 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
 
 	if (pmd_none(*pmd)) {
 		pte = early_alloc(PTRS_PER_PTE * sizeof(pte_t));
-		__pmd_populate(pmd, __pa(pte), PMD_TYPE_TABLE);
+		__pmd_populate(pmd, __pa(pte), PMD_TYPE_TABLE | PMD_TABLE_KERNEL);
 	}
 #ifdef CONFIG_DATA_PROTECTION
 	if (pmd_bad(*pmd)) {
@@ -227,7 +227,7 @@ static void __init alloc_init_pte(pmd_t *pmd, unsigned long addr,
 
 #ifdef CONFIG_DATA_PROTECTION
 	if (new_pt) {
-		__pmd_populate(pmd, __pa(new_pt), PMD_TYPE_TABLE);
+		__pmd_populate(pmd, __pa(new_pt), PMD_TYPE_TABLE | PMD_TABLE_KERNEL);
 	}
 #endif
 }
@@ -243,7 +243,7 @@ static void __init alloc_init_pmd(pud_t *pud, unsigned long addr,
 	 */
 	if (pud_none(*pud) || pud_bad(*pud)) {
 		pmd = early_alloc(PTRS_PER_PMD * sizeof(pmd_t));
-		pud_populate(&init_mm, pud, pmd);
+		pud_populate_kernel(&init_mm, pud, pmd);
 	}
 
 	pmd = pmd_offset(pud, addr);
@@ -423,7 +423,7 @@ static void __init create_global_shadow_mapping()
 	order = fls64(pages -1);
 
 	kdp_global_shadow = memblock_alloc(size, PAGE_SIZE);
-	
+
 	md.virtual = start + SZ_2G;
 	md.pfn = __phys_to_pfn(kdp_global_shadow);
 	md.length = size;

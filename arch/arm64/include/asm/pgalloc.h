@@ -59,6 +59,11 @@ static inline void pud_populate(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
 	set_pud(pud, __pud(__pa(pmd) | PMD_TYPE_TABLE));
 }
 
+static inline void pud_populate_kernel(struct mm_struct *mm, pud_t *pud, pmd_t *pmd)
+{
+	set_pud(pud, __pud(__pa(pmd) | PMD_TYPE_TABLE | PMD_TABLE_KERNEL));
+}
+
 #endif	/* CONFIG_ARM64_64K_PAGES */
 
 extern pgd_t *pgd_alloc(struct mm_struct *mm);
@@ -128,7 +133,7 @@ pmd_populate_kernel(struct mm_struct *mm, pmd_t *pmdp, pte_t *ptep)
 	/*
 	 * The pmd must be loaded with the physical address of the PTE table
 	 */
-	__pmd_populate(pmdp, __pa(ptep), PMD_TYPE_TABLE);
+	__pmd_populate(pmdp, __pa(ptep), PMD_TYPE_TABLE | PMD_TABLE_KERNEL);
 }
 
 static inline void

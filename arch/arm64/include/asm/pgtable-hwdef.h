@@ -31,6 +31,7 @@
 #define PGD_TYPE_FAULT		(_AT(pmdval_t, 0) << 0)
 #define PGD_TYPE_TABLE		(_AT(pmdval_t, 3) << 0)
 #define PGD_TYPE_SECT		(_AT(pmdval_t, 1) << 0)
+#define PGD_TABLE_KERNEL	(_AT(pmdval_t, 1) << 61)
 
 #define pgd_table(x) ((pgd_val(x) & PGD_TYPE_MASK) == PGD_TYPE_TABLE)
 
@@ -41,6 +42,7 @@
 #define PMD_TYPE_FAULT		(_AT(pmdval_t, 0) << 0)
 #define PMD_TYPE_TABLE		(_AT(pmdval_t, 3) << 0)
 #define PMD_TYPE_SECT		(_AT(pmdval_t, 1) << 0)
+#define PMD_TABLE_KERNEL	(_AT(pmdval_t, 1) << 61)
 
 #define pmd_table(x) ((pmd_val(x) & PMD_TYPE_MASK) == PMD_TYPE_TABLE)
 
