@@ -41,6 +41,10 @@ then you need to replace the `grep` parameter.
 To pack the kernel `arch/arm64/boot/Image.gz-dtb` into a flashable bootimg,
 check the tutorial widely available online.
 
+### Kernel Analyzer
+
+The corresponding kernel analyzer is hosted in a separate [repo](https://github.com/sslab-gatech/kernel-analyzer).
+
 ### Publications
 Paper
 ```
